@@ -200,15 +200,24 @@ class HomeViewModel {
         return f.string(from: selectedDate)
     }
 
-    func autoSelectMealPeriod() {
+    private var timeBasedMealPeriod: String {
         let hour = Calendar.current.component(.hour, from: Date())
-        if hour < 11 {
-            selectedMealPeriod = "Breakfast"
-        } else if hour < 16 {
-            selectedMealPeriod = "Lunch"
-        } else {
-            selectedMealPeriod = "Dinner"
-        }
+        if hour < 11 { return "Breakfast" }
+        if hour < 16 { return "Lunch" }
+        return "Dinner"
+    }
+
+    func autoSelectMealPeriod() {
+        selectedMealPeriod = timeBasedMealPeriod
+    }
+
+    /// Keeps the selected meal period valid for the current hall and date.
+    /// Halls don't all serve the same periods, so a period carried over from
+    /// another hall can match nothing and render an empty menu.
+    func reconcileMealPeriod() {
+        let available = availableMealPeriods
+        guard !available.isEmpty, !available.contains(selectedMealPeriod) else { return }
+        selectedMealPeriod = available.contains(timeBasedMealPeriod) ? timeBasedMealPeriod : available[0]
     }
 
     private static let feedCacheKey = "cached_feed_data"
@@ -236,8 +245,13 @@ class HomeViewModel {
             loadFromDisk()
         }
 
-        // Skip network if same date + filters already loaded
-        guard lastLoadedKey != currentCacheKey else { return }
+        // Skip network if same date + filters already loaded. The fetch covers
+        // every hall, so switching halls lands here — the selected meal period
+        // still has to be re-checked against the new hall's offerings.
+        guard lastLoadedKey != currentCacheKey else {
+            reconcileMealPeriod()
+            return
+        }
 
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
@@ -278,10 +292,7 @@ class HomeViewModel {
             if filtersMatchDefaults {
                 saveToDisk()
             }
-            if !availableMealPeriods.contains(selectedMealPeriod),
-               let first = availableMealPeriods.first {
-                selectedMealPeriod = first
-            }
+            reconcileMealPeriod()
         } catch is CancellationError {
             // Ignore — task was superseded by a new load
         } catch {
