@@ -8,12 +8,18 @@
 
 /* Begin PBXFileReference section */
 		403A87422EBC65CD00085476 /* UMD Dining.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UMD Dining.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000012EBC65CD00085476 /* UMDDiningTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = UMDDiningTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		403A87442EBC65CD00085476 /* umd-dining-app */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "umd-dining-app";
+			sourceTree = "<group>";
+		};
+		AA0000022EBC65CD00085476 /* umd-dining-appTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "umd-dining-appTests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,13 +32,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000052EBC65CD00085476 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		403A87392EBC65CD00085476 = {
 			isa = PBXGroup;
 			children = (
-				403A87442EBC65CD00085476 /* UMD Dining */,
+				403A87442EBC65CD00085476 /* umd-dining-app */,
+				AA0000022EBC65CD00085476 /* umd-dining-appTests */,
 				403A87432EBC65CD00085476 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +55,7 @@
 			isa = PBXGroup;
 			children = (
 				403A87422EBC65CD00085476 /* UMD Dining.app */,
+				AA0000012EBC65CD00085476 /* UMDDiningTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,7 +85,40 @@
 			productReference = 403A87422EBC65CD00085476 /* UMD Dining.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000032EBC65CD00085476 /* UMDDiningTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000072EBC65CD00085476 /* Build configuration list for PBXNativeTarget "UMDDiningTests" */;
+			buildPhases = (
+				AA0000042EBC65CD00085476 /* Sources */,
+				AA0000052EBC65CD00085476 /* Frameworks */,
+				AA0000062EBC65CD00085476 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA00000A2EBC65CD00085476 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000022EBC65CD00085476 /* umd-dining-appTests */,
+			);
+			name = UMDDiningTests;
+			packageProductDependencies = (
+			);
+			productName = UMDDiningTests;
+			productReference = AA0000012EBC65CD00085476 /* UMDDiningTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+		AA00000B2EBC65CD00085476 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 403A873A2EBC65CD00085476 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 403A87412EBC65CD00085476;
+			remoteInfo = "UMD Dining";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 		403A873A2EBC65CD00085476 /* Project object */ = {
@@ -82,6 +130,10 @@
 				TargetAttributes = {
 					403A87412EBC65CD00085476 = {
 						CreatedOnToolsVersion = 26.0.1;
+					};
+					AA0000032EBC65CD00085476 = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = 403A87412EBC65CD00085476;
 					};
 				};
 			};
@@ -100,12 +152,20 @@
 			projectRoot = "";
 			targets = (
 				403A87412EBC65CD00085476 /* UMD Dining */,
+				AA0000032EBC65CD00085476 /* UMDDiningTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		403A87402EBC65CD00085476 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000062EBC65CD00085476 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +182,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000042EBC65CD00085476 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA00000A2EBC65CD00085476 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 403A87412EBC65CD00085476 /* UMD Dining */;
+			targetProxy = AA00000B2EBC65CD00085476 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		403A874B2EBC65CE00085476 /* Debug */ = {
@@ -306,6 +381,44 @@
 			};
 			name = Release;
 		};
+		AA0000082EBC65CD00085476 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "umddining.UMD-DiningTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UMD Dining.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UMD Dining";
+			};
+			name = Debug;
+		};
+		AA0000092EBC65CD00085476 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "umddining.UMD-DiningTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UMD Dining.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/UMD Dining";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -323,6 +436,15 @@
 			buildConfigurations = (
 				403A874E2EBC65CE00085476 /* Debug */,
 				403A874F2EBC65CE00085476 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000072EBC65CD00085476 /* Build configuration list for PBXNativeTarget "UMDDiningTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000082EBC65CD00085476 /* Debug */,
+				AA0000092EBC65CD00085476 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
