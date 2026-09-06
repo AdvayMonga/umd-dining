@@ -18,12 +18,20 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-15
+    # macos-26: the project targets Swift 6.2 features (MainActor default
+    # isolation, approachable concurrency) that older Xcodes don't honor —
+    # on Xcode 16 the app doesn't even compile.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Select the newest available Xcode
+        run: |
+          ls /Applications | grep -i "^Xcode" || true
+          LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
 
       - name: Build and test
         run: |
