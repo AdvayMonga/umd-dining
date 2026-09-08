@@ -1,0 +1,49 @@
+name: iOS CI
+
+on:
+  pull_request:
+    paths:
+      - "umd-dining-app/**"
+      - "umd-dining-appTests/**"
+      - "umd-dining-app.xcodeproj/**"
+      - ".github/workflows/ios-ci.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # macos-26: the project targets Swift 6.2 features (MainActor default
+    # isolation, approachable concurrency) that older Xcodes don't honor —
+    # on Xcode 16 the app doesn't even compile.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest available Xcode
+        run: |
+          ls /Applications | grep -i "^Xcode" || true
+          LATEST=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "Using $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+
+      - name: Build and test
+        run: |
+          # Pick whatever iPhone simulator this runner image ships with, so a
+          # image refresh doesn't break CI on a hardcoded device name.
+          SIM=$(xcrun simctl list devices available --json \
+            | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; \
+                          n=[v['name'] for k in d for v in d[k] if 'iPhone' in v['name']]; \
+                          print(n[0])")
+          echo "Testing on: $SIM"
+          xcodebuild test \
+            -project umd-dining-app.xcodeproj \
+            -scheme "UMD Dining" \
+            -destination "platform=iOS Simulator,name=$SIM" \
+            CODE_SIGNING_ALLOWED=NO
