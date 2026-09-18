@@ -56,28 +56,11 @@ struct TrackerView: View {
 
     var body: some View {
         NavigationStack {
-            trackerContent
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Tracker")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: GoalsView()) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "target")
-                                .font(.caption)
-                            Text("Set Goals")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundStyle(Color.umdRed)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.umdRed.opacity(0.12))
-                        .clipShape(Capsule())
-                    }
-                }
+            VStack(spacing: 0) {
+                header
+                trackerContent
             }
+            .background(Color.umdBackground)
         }
         .id(tabResetID)
         .overlay {
@@ -159,24 +142,78 @@ struct TrackerView: View {
         }
     }
 
+    // MARK: - Header
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Text("Tracker")
+                .font(.inter(size: 22, weight: .bold))
+                .foregroundStyle(Color.umdRed)
+
+            Spacer()
+
+            NavigationLink(destination: GoalsView()) {
+                HStack(spacing: 5) {
+                    Image(systemName: "target")
+                        .font(.system(size: 16, weight: .medium))
+                    Text("Goals")
+                        .font(.inter(size: 14, weight: .semibold))
+                }
+                .foregroundStyle(Color.umdRed)
+                .frame(height: 36)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
     // MARK: - Content
 
     private var trackerContent: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 12) {
                     Color.clear.frame(height: 0).id("trackerTop")
                     dateSelector
                     calorieRingCard
-                    macroBarCard
+                    sectionHeader("Macros")
+                    macroCards
                     loggedItemsSection
                     Spacer().frame(height: 40)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
             }
             .onAppear { scrollProxy = proxy }
         }
+    }
+
+    // MARK: - Section Header (matches StationHeaderRow)
+
+    private func sectionHeader(_ title: String, trailing: String? = nil) -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Text(title.uppercased())
+                    .font(.inter(size: 17, weight: .bold))
+                    .foregroundStyle(Color.umdRed)
+                    .kerning(1.5)
+                    .lineLimit(1)
+                Spacer()
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.umdRed.opacity(0.7))
+                }
+            }
+            .frame(height: 36)
+
+            Rectangle()
+                .fill(Color.umdRed.opacity(0.25))
+                .frame(height: 1)
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Date Selector
@@ -244,56 +281,53 @@ struct TrackerView: View {
             .frame(height: 220)
             .animation(.easeOut(duration: 0.8), value: displayCalorieValue)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text("\(totalCalories)")
-                    .font(.system(size: 42, weight: .bold))
+                    .font(.inter(size: 42, weight: .bold))
                     .foregroundStyle(Color.umdRed)
-                Text("/ \(calorieGoal) cal")
-                    .font(.subheadline)
+                Text("OF \(calorieGoal) CAL")
+                    .font(.inter(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .kerning(0.3)
             }
         }
         .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        .homeCard()
     }
 
-    // MARK: - Macro Bar Chart (Vertical, bottom-up fill with goal)
+    // MARK: - Macro Cards (one per macro, bottom-up fill with goal)
 
-    private var macroBarCard: some View {
-        VStack(spacing: 12) {
-            HStack(alignment: .bottom, spacing: 16) {
-                macroBar(label: "Protein", consumed: displayProteinValue, goal: Double(tracker.proteinGoal), color: .blue, met: proteinMet && animateCharts)
-                macroBar(label: "Carbs", consumed: displayCarbsValue, goal: Double(tracker.carbsGoal), color: .green, met: carbsMet && animateCharts)
-                macroBar(label: "Fat", consumed: displayFatValue, goal: Double(tracker.fatGoal), color: .orange, met: fatMet && animateCharts)
-            }
-            .frame(height: 200)
-            .animation(.easeOut(duration: 0.8), value: displayProteinValue)
-            .animation(.easeOut(duration: 0.8), value: displayCarbsValue)
-            .animation(.easeOut(duration: 0.8), value: displayFatValue)
-            .animation(.easeInOut(duration: 0.5), value: tracker.proteinGoal)
-            .animation(.easeInOut(duration: 0.5), value: tracker.carbsGoal)
-            .animation(.easeInOut(duration: 0.5), value: tracker.fatGoal)
+    private var macroCards: some View {
+        HStack(spacing: 10) {
+            macroCard(label: "Protein", consumed: displayProteinValue, goal: Double(tracker.proteinGoal), color: .blue, met: proteinMet && animateCharts)
+            macroCard(label: "Carbs", consumed: displayCarbsValue, goal: Double(tracker.carbsGoal), color: .green, met: carbsMet && animateCharts)
+            macroCard(label: "Fat", consumed: displayFatValue, goal: Double(tracker.fatGoal), color: .orange, met: fatMet && animateCharts)
         }
-        .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+        .animation(.easeOut(duration: 0.8), value: displayProteinValue)
+        .animation(.easeOut(duration: 0.8), value: displayCarbsValue)
+        .animation(.easeOut(duration: 0.8), value: displayFatValue)
+        .animation(.easeInOut(duration: 0.5), value: tracker.proteinGoal)
+        .animation(.easeInOut(duration: 0.5), value: tracker.carbsGoal)
+        .animation(.easeInOut(duration: 0.5), value: tracker.fatGoal)
     }
 
-    private func macroBar(label: String, consumed: Double, goal: Double, color: Color, met: Bool) -> some View {
+    private func macroCard(label: String, consumed: Double, goal: Double, color: Color, met: Bool) -> some View {
         let maxVal = max(goal, consumed, 1)
         let goalRatio = goal > 0 ? goal / maxVal : 0
         let consumedRatio = consumed / maxVal
 
-        return VStack(spacing: 6) {
-            // Goal on top
-            if goal > 0 {
-                Text("\(Int(goal))g")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(color.opacity(0.5))
+        return VStack(spacing: 10) {
+            // Label + star
+            HStack(spacing: 3) {
+                Text(label.uppercased())
+                    .font(.inter(size: 11, weight: .bold))
+                    .kerning(1)
+                    .foregroundStyle(color)
+                if met {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(color)
+                }
             }
 
             // Bar
@@ -314,54 +348,33 @@ struct TrackerView: View {
                         .frame(maxHeight: .infinity, alignment: .bottom)
                 }
             }
+            .frame(width: 40, height: 120)
 
-            // Consumed amount at bottom
-            Text("\(Int(consumed))g")
-                .font(.caption2)
-                .fontWeight(.bold)
-                .foregroundStyle(color)
-
-            // Label + star
-            HStack(spacing: 2) {
-                if met {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(color)
-                }
-                Text(label)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(color)
+            // Consumed / goal
+            VStack(spacing: 2) {
+                Text("\(Int(consumed))g")
+                    .font(.inter(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
+                Text(goal > 0 ? "OF \(Int(goal))G" : "NO GOAL")
+                    .font(.inter(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .kerning(0.3)
             }
         }
+        .padding(.vertical, 14)
         .frame(maxWidth: .infinity)
+        .homeCard(tint: color)
     }
 
     // MARK: - Logged Items
 
     private var loggedItemsSection: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("Logged Items")
-                    .font(.callout)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if !entries.isEmpty {
-                    Text("\(entries.count)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.umdRed.opacity(0.15))
-                        .foregroundStyle(Color.umdRed)
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 4)
+        VStack(spacing: 12) {
+            sectionHeader("Logged Items", trailing: entries.isEmpty ? nil : "\(entries.count) \(entries.count == 1 ? "item" : "items")")
 
             if entries.isEmpty {
                 Text("Tap + on any food to start tracking")
-                    .font(.subheadline)
+                    .font(.inter(size: 14))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 24)
@@ -387,14 +400,11 @@ struct TrackerView: View {
                     showClearConfirm = true
                 } label: {
                     Text("Clear All")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.white)
+                        .font(.inter(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.umdRed)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(Color.umdRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                        .padding(.vertical, 12)
+                        .homeCard()
                 }
                 .buttonStyle(.plain)
             }
@@ -402,38 +412,42 @@ struct TrackerView: View {
     }
 
     private func loggedItemRow(_ entry: TrackedEntry) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(entry.foodName)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
+                    .font(.inter(size: 16, weight: .bold))
                     .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                Text(timeString(from: entry.loggedAt))
-                    .font(.caption)
+                Text("\(entry.calories) CAL · \(timeString(from: entry.loggedAt))")
+                    .font(.inter(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .kerning(0.3)
 
-                HStack(spacing: 6) {
-                    macroLabel("\(entry.calories) Cals", color: Color.umdRed)
-                    macroLabel("\(Int(entry.proteinG))g P", color: .blue)
-                    macroLabel("\(Int(entry.carbsG))g C", color: .green)
-                    macroLabel("\(Int(entry.fatG))g F", color: .orange)
+                FlowLayout(spacing: 4) {
+                    macroTag("\(Int(entry.proteinG))g protein", color: .blue)
+                    macroTag("\(Int(entry.carbsG))g carbs", color: .green)
+                    macroTag("\(Int(entry.fatG))g fat", color: .orange)
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button {
                     beginEdit(entry)
                 } label: {
-                    if editLoadingRecNum == entry.recNum {
-                        ProgressView().scaleEffect(0.7)
-                            .frame(width: 22, height: 22)
-                    } else {
-                        Image(systemName: "pencil.circle")
-                            .foregroundStyle(Color.umdRed)
-                            .font(.title3)
+                    ZStack {
+                        Circle()
+                            .stroke(Color.umdRed.opacity(0.25), lineWidth: 1.5)
+                            .frame(width: 36, height: 36)
+                        if editLoadingRecNum == entry.recNum {
+                            ProgressView().frame(width: 18, height: 18)
+                        } else {
+                            Image(systemName: "pencil")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.umdRed)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
@@ -442,33 +456,34 @@ struct TrackerView: View {
                 Button {
                     removeEntry(entry)
                 } label: {
-                    Image(systemName: "minus.circle")
-                        .foregroundStyle(Color.umdRed)
-                        .font(.title3)
+                    ZStack {
+                        Circle()
+                            .stroke(Color.umdRed.opacity(0.25), lineWidth: 1.5)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "minus")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.umdRed)
+                    }
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-        .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
+        .padding(16)
+        .homeCard()
         .transition(.asymmetric(
             insertion: .opacity,
             removal: .opacity.combined(with: .slide)
         ))
     }
 
-    private func macroLabel(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
+    private func macroTag(_ text: String, color: Color) -> some View {
+        Text(text.uppercased())
+            .font(.inter(size: 10, weight: .medium))
             .foregroundStyle(color)
-            .clipShape(Capsule())
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: - Clear Confirm Overlay
@@ -481,40 +496,47 @@ struct TrackerView: View {
 
             VStack(spacing: 16) {
                 Text("Clear All Items?")
-                    .font(.title3)
-                    .fontWeight(.bold)
+                    .font(.inter(size: 18, weight: .bold))
 
                 Text("This will remove all \(entries.count) logged items for \(dateLabel.lowercased()).")
-                    .font(.subheadline)
+                    .font(.inter(size: 14))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button {
-                    showClearConfirm = false
-                    clearAllEntries()
-                } label: {
-                    Text("Clear All")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color.umdRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
+                HStack(spacing: 12) {
+                    Button {
+                        showClearConfirm = false
+                    } label: {
+                        Text("Cancel")
+                            .font(.inter(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(.systemGray5))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
 
-                Button {
-                    showClearConfirm = false
-                } label: {
-                    Text("Cancel")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Button {
+                        showClearConfirm = false
+                        clearAllEntries()
+                    } label: {
+                        Text("Clear All")
+                            .font(.inter(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.umdRed)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(24)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(radius: 20)
-            .padding(.horizontal, 40)
+            .padding(.horizontal, 30)
         }
     }
 
@@ -560,6 +582,30 @@ struct TrackerView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Home Card Style (matches FoodItemRow)
+
+private struct HomeCardStyle: ViewModifier {
+    var tint: Color
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+                tint.opacity(colorScheme == .dark ? 0.6 : 0.25),
+                lineWidth: colorScheme == .dark ? 1.5 : 1
+            ))
+            .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
+    }
+}
+
+private extension View {
+    func homeCard(tint: Color = .umdRed) -> some View {
+        modifier(HomeCardStyle(tint: tint))
     }
 }
 
