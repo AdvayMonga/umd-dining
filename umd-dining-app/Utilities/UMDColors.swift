@@ -30,6 +30,61 @@ extension Color {
     })
 }
 
+// MARK: - Home Card Style (matches FoodItemRow)
+
+struct HomeCardStyle: ViewModifier {
+    var tint: Color
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+                tint.opacity(colorScheme == .dark ? 0.6 : 0.25),
+                lineWidth: colorScheme == .dark ? 1.5 : 1
+            ))
+            .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
+    }
+}
+
+extension View {
+    func homeCard(tint: Color = .umdRed) -> some View {
+        modifier(HomeCardStyle(tint: tint))
+    }
+}
+
+// MARK: - Section Header (matches StationHeaderRow)
+
+struct SectionHeader: View {
+    let title: String
+    var trailing: String? = nil
+
+    var body: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                Text(title.uppercased())
+                    .font(.inter(size: 17, weight: .bold))
+                    .foregroundStyle(Color.umdRed)
+                    .kerning(1.5)
+                    .lineLimit(1)
+                Spacer()
+                if let trailing {
+                    Text(trailing)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.umdRed.opacity(0.7))
+                }
+            }
+            .frame(height: 36)
+
+            Rectangle()
+                .fill(Color.umdRed.opacity(0.25))
+                .frame(height: 1)
+        }
+        .padding(.top, 4)
+    }
+}
+
 // MARK: - CalendarCardButton (used in StationPageView and TrackerView)
 
 struct CalendarCardButton: View {

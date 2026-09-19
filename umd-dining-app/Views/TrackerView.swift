@@ -178,7 +178,7 @@ struct TrackerView: View {
                     Color.clear.frame(height: 0).id("trackerTop")
                     dateSelector
                     calorieRingCard
-                    sectionHeader("Macros")
+                    SectionHeader(title: "Macros")
                     macroCards
                     loggedItemsSection
                     Spacer().frame(height: 40)
@@ -188,32 +188,6 @@ struct TrackerView: View {
             }
             .onAppear { scrollProxy = proxy }
         }
-    }
-
-    // MARK: - Section Header (matches StationHeaderRow)
-
-    private func sectionHeader(_ title: String, trailing: String? = nil) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-                Text(title.uppercased())
-                    .font(.inter(size: 17, weight: .bold))
-                    .foregroundStyle(Color.umdRed)
-                    .kerning(1.5)
-                    .lineLimit(1)
-                Spacer()
-                if let trailing {
-                    Text(trailing)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.umdRed.opacity(0.7))
-                }
-            }
-            .frame(height: 36)
-
-            Rectangle()
-                .fill(Color.umdRed.opacity(0.25))
-                .frame(height: 1)
-        }
-        .padding(.top, 4)
     }
 
     // MARK: - Date Selector
@@ -292,7 +266,7 @@ struct TrackerView: View {
             }
         }
         .padding()
-        .homeCard()
+        .homeCard(tint: .clear)
     }
 
     // MARK: - Macro Cards (one per macro, bottom-up fill with goal)
@@ -335,26 +309,26 @@ struct TrackerView: View {
                 ZStack(alignment: .bottom) {
                     // Goal background (full translucent bar)
                     if goal > 0 {
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: 10)
                             .fill(color.opacity(0.12))
                             .frame(height: geo.size.height * goalRatio)
                             .frame(maxHeight: .infinity, alignment: .bottom)
                     }
 
                     // Consumed fill (solid, bottom-up)
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 10)
                         .fill(color)
                         .frame(height: geo.size.height * min(consumedRatio, 1.0))
                         .frame(maxHeight: .infinity, alignment: .bottom)
                 }
             }
-            .frame(width: 40, height: 120)
+            .frame(width: 64, height: 120)
 
             // Consumed / goal
             VStack(spacing: 2) {
                 Text("\(Int(consumed))g")
                     .font(.inter(size: 18, weight: .bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(color)
                 Text(goal > 0 ? "OF \(Int(goal))G" : "NO GOAL")
                     .font(.inter(size: 10, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -370,7 +344,7 @@ struct TrackerView: View {
 
     private var loggedItemsSection: some View {
         VStack(spacing: 12) {
-            sectionHeader("Logged Items", trailing: entries.isEmpty ? nil : "\(entries.count) \(entries.count == 1 ? "item" : "items")")
+            SectionHeader(title: "Logged Items", trailing: entries.isEmpty ? nil : "\(entries.count) \(entries.count == 1 ? "item" : "items")")
 
             if entries.isEmpty {
                 Text("Tap + on any food to start tracking")
@@ -450,6 +424,7 @@ struct TrackerView: View {
                         }
                     }
                 }
+                .contentShape(Circle())
                 .buttonStyle(.plain)
                 .disabled(editLoadingRecNum != nil)
 
@@ -465,6 +440,7 @@ struct TrackerView: View {
                             .foregroundStyle(Color.umdRed)
                     }
                 }
+                .contentShape(Circle())
                 .buttonStyle(.plain)
             }
         }
@@ -582,30 +558,6 @@ struct TrackerView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
-    }
-}
-
-// MARK: - Home Card Style (matches FoodItemRow)
-
-private struct HomeCardStyle: ViewModifier {
-    var tint: Color
-    @Environment(\.colorScheme) private var colorScheme
-
-    func body(content: Content) -> some View {
-        content
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(
-                tint.opacity(colorScheme == .dark ? 0.6 : 0.25),
-                lineWidth: colorScheme == .dark ? 1.5 : 1
-            ))
-            .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
-    }
-}
-
-private extension View {
-    func homeCard(tint: Color = .umdRed) -> some View {
-        modifier(HomeCardStyle(tint: tint))
     }
 }
 

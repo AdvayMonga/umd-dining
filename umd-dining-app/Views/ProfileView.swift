@@ -18,13 +18,12 @@ struct ProfileView: View {
             ScrollView {
                 VStack(spacing: 0) {
 
-                    // Header — directly on background, no card
-                    VStack(spacing: 10) {
+                    // Greeting — directly on background, no card
+                    VStack(alignment: .leading, spacing: 10) {
                         Text(AuthManager.shared.isGuest
                              ? "Hi, there!"
                              : "Hi, \(AuthManager.shared.displayName?.components(separatedBy: " ").first ?? "there")!")
-                            .font(.title2)
-                            .fontWeight(.bold)
+                            .font(.inter(size: 24, weight: .bold))
                             .foregroundStyle(.primary)
 
                         if AuthManager.shared.isGuest {
@@ -54,23 +53,19 @@ struct ProfileView: View {
                                 Image(systemName: "apple.logo")
                                     .font(.caption)
                                 Text("Signed in with Apple")
-                                    .font(.subheadline)
+                                    .font(.inter(size: 13, weight: .medium))
                             }
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(Color(.secondarySystemGroupedBackground))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color(.systemGray3), lineWidth: 1.5))
+                            .foregroundStyle(.secondary)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 24)
-                    .padding(.bottom, 28)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 20)
 
                     // PREFERENCES section
-                    VStack(alignment: .leading, spacing: 8) {
-                        sectionLabel("PREFERENCES")
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader(title: "Preferences")
 
                         // Cuisine Preferences
                         NavigationLink {
@@ -90,11 +85,11 @@ struct ProfileView: View {
                     }
                     .padding(.horizontal, 16)
 
-                    Spacer().frame(height: 36)
+                    Spacer().frame(height: 24)
 
                     // APP SETTINGS section
-                    VStack(alignment: .leading, spacing: 8) {
-                        sectionLabel("APP SETTINGS")
+                    VStack(alignment: .leading, spacing: 12) {
+                        SectionHeader(title: "App Settings")
 
                         itemCard {
                             HStack(spacing: 14) {
@@ -103,11 +98,11 @@ struct ProfileView: View {
                                     .foregroundStyle(Color.umdRed)
                                     .frame(width: 24)
                                 Text("Dark Mode")
-                                    .font(.body)
+                                    .font(.inter(size: 16, weight: .semibold))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 Text(isDarkMode ? "On" : "Off")
-                                    .font(.subheadline)
+                                    .font(.inter(size: 14, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 16)
@@ -123,7 +118,7 @@ struct ProfileView: View {
                                     .foregroundStyle(Color.umdRed)
                                     .frame(width: 24)
                                 Text("Privacy Policy")
-                                    .font(.body)
+                                    .font(.inter(size: 16, weight: .semibold))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 Image(systemName: "arrow.up.right")
@@ -145,7 +140,7 @@ struct ProfileView: View {
                                     .foregroundStyle(Color.umdRed)
                                     .frame(width: 24)
                                 Text("App Feedback")
-                                    .font(.body)
+                                    .font(.inter(size: 16, weight: .semibold))
                                     .foregroundStyle(.primary)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -168,16 +163,14 @@ struct ProfileView: View {
                         Button { showSignOutAlert = true } label: {
                             HStack(spacing: 8) {
                                 Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    .font(.body.weight(.bold))
+                                    .font(.system(size: 15, weight: .semibold))
                                 Text("Logout")
-                                    .font(.body.weight(.bold))
+                                    .font(.inter(size: 15, weight: .semibold))
                             }
                             .foregroundStyle(Color.umdRed)
                             .frame(maxWidth: .infinity)
                             .frame(height: 52)
-                            .background(Color(.systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.umdRed, lineWidth: 1.5))
+                            .homeCard()
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 16)
@@ -188,15 +181,15 @@ struct ProfileView: View {
                     if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                         Text("Version \(version) (\(build))")
-                            .font(.caption)
+                            .font(.inter(size: 12))
                             .foregroundStyle(.tertiary)
                     }
 
                     Spacer().frame(height: 24)
                 }
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Profile")
+            .safeAreaInset(edge: .top, spacing: 0) { header }
+            .background(Color.umdBackground)
             .overlay {
                 if isUpgrading {
                     Color.black.opacity(0.3).ignoresSafeArea()
@@ -225,9 +218,7 @@ struct ProfileView: View {
     ) -> some View {
         Button(action: action) {
             content()
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-                .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                .homeCard()
         }
         .buttonStyle(.plain)
     }
@@ -241,7 +232,7 @@ struct ProfileView: View {
                 .foregroundStyle(Color.umdRed)
                 .frame(width: 24)
             Text(title)
-                .font(.body)
+                .font(.inter(size: 16, weight: .semibold))
                 .foregroundStyle(.primary)
             Spacer()
             Image(systemName: "chevron.right")
@@ -250,20 +241,23 @@ struct ProfileView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .homeCard()
     }
 
-    // MARK: - Section Label
+    // MARK: - Header
 
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.caption)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 4)
-            .padding(.bottom, 2)
+    private var header: some View {
+        HStack {
+            Text("Profile")
+                .font(.inter(size: 22, weight: .bold))
+                .foregroundStyle(Color.umdRed)
+            Spacer()
+        }
+        .frame(height: 36)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(Color.umdBackground)
     }
 
     // MARK: - Sign Out Overlay
@@ -275,40 +269,44 @@ struct ProfileView: View {
                 .onTapGesture { showSignOutAlert = false }
             VStack(spacing: 16) {
                 Text("Sign Out?")
-                    .font(.title3)
-                    .fontWeight(.bold)
+                    .font(.inter(size: 18, weight: .bold))
                 Text(AuthManager.shared.isGuest
                      ? "Your favorites and preferences will be lost."
                      : "Your data will be saved to your account. Sign back in anytime to restore it.")
-                    .font(.subheadline)
+                    .font(.inter(size: 14))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button {
-                    showSignOutAlert = false
-                    AuthManager.shared.signOut()
-                } label: {
-                    Text("Sign Out")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(Color.umdRed)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                Button { showSignOutAlert = false } label: {
-                    Text("Cancel")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1.5))
+                HStack(spacing: 12) {
+                    Button { showSignOutAlert = false } label: {
+                        Text("Cancel")
+                            .font(.inter(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color(.systemGray5))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        showSignOutAlert = false
+                        AuthManager.shared.signOut()
+                    } label: {
+                        Text("Sign Out")
+                            .font(.inter(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                            .background(Color.umdRed)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(24)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(radius: 20)
-            .padding(.horizontal, 40)
+            .padding(.horizontal, 30)
         }
     }
 
