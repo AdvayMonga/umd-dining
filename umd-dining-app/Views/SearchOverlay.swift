@@ -297,7 +297,7 @@ struct SearchOverlay: View {
                                                     favorites.toggleFood(recNum: item.recNum, name: item.name)
                                                 } label: {
                                                     Image(systemName: favorites.isFavorite(recNum: item.recNum) ? "heart.fill" : "heart")
-                                                        .foregroundStyle(favorites.isFavorite(recNum: item.recNum) ? .red : .gray)
+                                                        .foregroundStyle(favorites.isFavorite(recNum: item.recNum) ? Color.umdRed : .gray)
                                                         .font(.title3)
                                                 }
                                                 .buttonStyle(.plain)
