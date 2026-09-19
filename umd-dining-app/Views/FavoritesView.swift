@@ -34,73 +34,53 @@ struct FavoritesView: View {
                 )
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 12) {
                         if !filteredFoods.isEmpty {
-                            sectionHeader("Foods")
+                            SectionHeader(title: "Foods")
                             ForEach(filteredFoods, id: \.recNum) { recNum, name in
                                 NavigationLink(destination: NutritionDetailView(recNum: recNum, foodName: name, source: "favorites")) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 12) {
+                                        VStack(alignment: .leading, spacing: 6) {
                                             Text(name)
-                                                .font(.subheadline)
+                                                .font(.inter(size: 16, weight: .bold))
                                                 .foregroundStyle(.primary)
+                                                .fixedSize(horizontal: false, vertical: true)
                                             if let info = availability[recNum] {
                                                 AvailabilityLabel(availability: info)
                                             }
                                         }
-                                        Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                        Spacer(minLength: 8)
+                                        unfavoriteButton { favorites.toggleFood(recNum: recNum, name: name) }
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(Color(.systemBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                                    .padding(16)
+                                    .homeCard()
                                 }
                                 .buttonStyle(.plain)
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        favorites.toggleFood(recNum: recNum, name: name)
-                                    } label: {
-                                        Label("Remove", systemImage: "heart.slash")
-                                    }
-                                }
                             }
                         }
 
                         if !filteredStations.isEmpty {
-                            sectionHeader("Stations")
+                            SectionHeader(title: "Stations")
                                 .padding(.top, filteredFoods.isEmpty ? 0 : 8)
                             ForEach(filteredStations, id: \.self) { station in
-                                HStack {
+                                HStack(spacing: 12) {
                                     Text(station)
-                                        .font(.subheadline)
+                                        .font(.inter(size: 16, weight: .bold))
                                         .foregroundStyle(.primary)
-                                    Spacer()
+                                    Spacer(minLength: 8)
+                                    unfavoriteButton { favorites.toggleStation(name: station) }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(Color(.systemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                .swipeActions(edge: .trailing) {
-                                    Button(role: .destructive) {
-                                        favorites.toggleStation(name: station)
-                                    } label: {
-                                        Label("Remove", systemImage: "heart.slash")
-                                    }
-                                }
+                                .padding(16)
+                                .homeCard()
                             }
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                 }
             }
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.umdBackground)
         .navigationTitle("Favorites")
         .searchable(text: $searchText, prompt: "Search favorites")
         .task(id: favorites.sortedFoods.map { $0.recNum }) {
@@ -125,13 +105,20 @@ struct FavoritesView: View {
         }
     }
 
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.callout)
-            .fontWeight(.semibold)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 4)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    // Filled heart matching FoodItemRow; tap to remove from favorites
+    private func unfavoriteButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .stroke(Color.umdRed, lineWidth: 1.5)
+                    .frame(width: 36, height: 36)
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.umdRed)
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

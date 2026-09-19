@@ -18,13 +18,27 @@ struct ProfileView: View {
             ScrollView {
                 VStack(spacing: 0) {
 
-                    // Greeting — directly on background, no card
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(AuthManager.shared.isGuest
-                             ? "Hi, there!"
-                             : "Hi, \(AuthManager.shared.displayName?.components(separatedBy: " ").first ?? "there")!")
-                            .font(.inter(size: 24, weight: .bold))
-                            .foregroundStyle(.primary)
+                    // Account card
+                    VStack(spacing: 14) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.umdRed.opacity(0.12))
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 26))
+                                    .foregroundStyle(Color.umdRed)
+                            }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(accountName)
+                                    .font(.inter(size: 18, weight: .bold))
+                                    .foregroundStyle(.primary)
+                                Text(AuthManager.shared.isGuest ? "Not signed in" : "Signed in with Apple")
+                                    .font(.inter(size: 13, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
 
                         if AuthManager.shared.isGuest {
                             SignInWithAppleButton(.signIn) { request in
@@ -45,20 +59,28 @@ struct ProfileView: View {
                                 }
                             }
                             .signInWithAppleButtonStyle(isDarkMode ? .white : .black)
-                            .frame(width: 220, height: 38)
-                            .clipShape(RoundedRectangle(cornerRadius: 19))
+                            .frame(height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                             .disabled(isUpgrading)
                         } else {
-                            HStack(spacing: 6) {
-                                Image(systemName: "apple.logo")
-                                    .font(.caption)
-                                Text("Signed in with Apple")
-                                    .font(.inter(size: 13, weight: .medium))
+                            Button { showSignOutAlert = true } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 15, weight: .semibold))
+                                    Text("Sign Out")
+                                        .font(.inter(size: 15, weight: .semibold))
+                                }
+                                .foregroundStyle(Color.umdRed)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(Color.umdRed.opacity(0.1))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
-                            .foregroundStyle(.secondary)
+                            .buttonStyle(.plain)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .homeCard()
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 20)
@@ -80,6 +102,14 @@ struct ProfileView: View {
                             DietaryPrefsView(preferences: preferences)
                         } label: {
                             navItemRow(icon: "exclamationmark.triangle", title: "Allergens & Dietary Needs")
+                        }
+                        .buttonStyle(.plain)
+
+                        // Manage Favorites
+                        NavigationLink {
+                            FavoritesView()
+                        } label: {
+                            navItemRow(icon: "heart", title: "Manage Favorites")
                         }
                         .buttonStyle(.plain)
                     }
@@ -159,25 +189,6 @@ struct ProfileView: View {
 
                     Spacer().frame(height: 24)
 
-                    if !AuthManager.shared.isGuest {
-                        Button { showSignOutAlert = true } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Logout")
-                                    .font(.inter(size: 15, weight: .semibold))
-                            }
-                            .foregroundStyle(Color.umdRed)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 52)
-                            .homeCard()
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 16)
-                    }
-
-                    Spacer().frame(height: 16)
-
                     if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
                        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String {
                         Text("Version \(version) (\(build))")
@@ -208,6 +219,12 @@ struct ProfileView: View {
             }
         }
         .id(tabResetID)
+    }
+
+    private var accountName: String {
+        if AuthManager.shared.isGuest { return "Guest" }
+        guard let name = AuthManager.shared.displayName, !name.isEmpty else { return "Your Account" }
+        return name
     }
 
     // MARK: - Item Card
