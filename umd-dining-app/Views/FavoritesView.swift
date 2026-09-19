@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FavoritesView: View {
     @Environment(FavoritesManager.self) private var favorites
+    @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var availability: [String: AvailabilityInfo] = [:]
     @State private var lastFetchedRecNums: Set<String> = []
@@ -83,6 +84,22 @@ struct FavoritesView: View {
         .background(Color.umdBackground)
         .navigationTitle("Favorites")
         .searchable(text: $searchText, prompt: "Search favorites")
+        // Favorites save on tap; this matches the other preference pages
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button { dismiss() } label: {
+                Text("Save & Continue")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color.umdRed)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color.umdBackground)
+        }
         .task(id: favorites.sortedFoods.map { $0.recNum }) {
             await loadAvailability()
         }
