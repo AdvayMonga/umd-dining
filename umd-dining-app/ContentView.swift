@@ -12,7 +12,9 @@ struct ContentView: View {
 
     init(initialHallId: String, initialTab: Int = 0) {
         self.initialHallId = initialHallId
-        _selectedTab = State(initialValue: initialTab)
+        // First-run tutorial walks through Home, so land there until it's done
+        let tutorialDone = UserDefaults.standard.object(forKey: "hasCompletedTutorial") as? Bool ?? true
+        _selectedTab = State(initialValue: tutorialDone ? initialTab : 0)
         UITabBar.appearance().isHidden = true
     }
 
