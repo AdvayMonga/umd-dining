@@ -257,7 +257,7 @@ struct ProfileView: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 8)
-        .background(Color.umdBackground)
+        .background(Color.umdBackground.ignoresSafeArea(edges: .top))
     }
 
     // MARK: - Sign Out Overlay

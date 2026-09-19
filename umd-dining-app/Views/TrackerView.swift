@@ -423,8 +423,8 @@ struct TrackerView: View {
                                 .foregroundStyle(Color.umdRed)
                         }
                     }
+                    .contentShape(Circle())
                 }
-                .contentShape(Circle())
                 .buttonStyle(.plain)
                 .disabled(editLoadingRecNum != nil)
 
@@ -439,8 +439,8 @@ struct TrackerView: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(Color.umdRed)
                     }
+                    .contentShape(Circle())
                 }
-                .contentShape(Circle())
                 .buttonStyle(.plain)
             }
         }
