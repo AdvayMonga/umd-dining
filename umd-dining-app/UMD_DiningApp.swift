@@ -51,7 +51,6 @@ struct UMD_DiningApp: App {
                         }
                 } else {
                     DiningHallPickerView(
-                        userName: authManager.displayName ?? "",
                         selectedHallId: nil,
                         onSelect: { id, tab in
                             withAnimation(.easeInOut(duration: 0.35)) {

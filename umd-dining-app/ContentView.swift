@@ -92,7 +92,8 @@ private struct TabBarItem: View {
     }
 }
 
-private struct CustomTabBar: View {
+// Shared with DiningHallPickerView
+struct CustomTabBar: View {
     @Binding var selectedTab: Int
 
     var body: some View {
