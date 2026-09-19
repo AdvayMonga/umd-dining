@@ -3,7 +3,7 @@ import SwiftUI
 struct DiningHallPickerView: View {
     let userName: String?
     let selectedHallId: String?
-    let onSelect: (String) -> Void
+    let onSelect: (_ hallId: String, _ tab: Int) -> Void
 
     private let halls: [(id: String, name: String, imageAlignment: Alignment)] = [
         ("19", "Yahentamitsi",      .center),
@@ -14,6 +14,12 @@ struct DiningHallPickerView: View {
     private var displayName: String {
         guard let name = userName, !name.isEmpty else { return "Terp" }
         return name.components(separatedBy: " ").first ?? name
+    }
+
+    // First preferred hall (in hall order), else Yahentamitsi
+    private var defaultHallForShortcuts: String {
+        let prefs = UserPreferences.shared.preferredDiningHalls
+        return halls.map(\.id).first(where: prefs.contains) ?? "19"
     }
 
     var body: some View {
@@ -33,6 +39,22 @@ struct DiningHallPickerView: View {
                 .padding(.horizontal)
                 .padding(.top, 12)
                 .padding(.bottom, 10)
+
+                // Shortcut buttons (Tracker + Profile)
+                HStack(spacing: 10) {
+                    ShortcutButton(
+                        icon: "chart.bar.fill",
+                        label: "Tracker",
+                        onTap: { onSelect(defaultHallForShortcuts, 1) }
+                    )
+                    ShortcutButton(
+                        icon: "person.fill",
+                        label: "Profile",
+                        onTap: { onSelect(defaultHallForShortcuts, 2) }
+                    )
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 12)
             }
 
             // Section label + View Hours link
@@ -55,7 +77,7 @@ struct DiningHallPickerView: View {
                         hallId: hall.id,
                         hallName: hall.name,
                         imageAlignment: hall.imageAlignment,
-                        onTap: { onSelect(hall.id) }
+                        onTap: { onSelect(hall.id, 0) }
                     )
                     .frame(maxHeight: .infinity)
                 }
@@ -67,6 +89,40 @@ struct DiningHallPickerView: View {
         // Stretch to full screen; background fills behind safe areas
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
+    }
+}
+
+private struct ShortcutButton: View {
+    let icon: String
+    let label: String
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.umdRed)
+                Text(label)
+                    .font(.inter(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.umdRed)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(
+                        Color.umdRed.opacity(colorScheme == .dark ? 0.6 : 0.25),
+                        lineWidth: colorScheme == .dark ? 1.5 : 1
+                    )
+            )
+            .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -164,6 +220,6 @@ struct DiningHallCard: View {
     DiningHallPickerView(
         userName: "Tory",
         selectedHallId: nil,
-        onSelect: { _ in }
+        onSelect: { _, _ in }
     )
 }

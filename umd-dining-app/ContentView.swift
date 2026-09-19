@@ -10,8 +10,9 @@ struct ContentView: View {
     @State private var tabResetID = UUID()
     @AppStorage("hasCompletedTutorial") private var hasCompletedTutorial = true
 
-    init(initialHallId: String) {
+    init(initialHallId: String, initialTab: Int = 0) {
         self.initialHallId = initialHallId
+        _selectedTab = State(initialValue: initialTab)
         UITabBar.appearance().isHidden = true
     }
 
