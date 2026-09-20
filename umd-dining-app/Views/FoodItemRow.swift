@@ -86,10 +86,10 @@ struct FoodItemRow: View {
         }
         .onTapGesture(count: 1) {
             // Dip on the tap itself, not on touch-down, so scrolling stays clean
-            withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+            withAnimation(.easeOut(duration: 0.05)) { isPressed = true }
             Task {
-                try? await Task.sleep(for: .milliseconds(90))
-                withAnimation(.easeOut(duration: 0.12)) { isPressed = false }
+                try? await Task.sleep(for: .milliseconds(45))
+                withAnimation(.easeOut(duration: 0.08)) { isPressed = false }
                 onTap?()
             }
         }
