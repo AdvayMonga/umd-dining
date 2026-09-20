@@ -8,7 +8,6 @@ struct FoodItemRow: View {
     @Environment(FavoritesManager.self) private var favorites
     @Environment(NutritionTrackerManager.self) private var tracker
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
     @State private var isAdding = false
     @State private var showAdded = false
     @State private var showServingPicker = false
@@ -59,13 +58,8 @@ struct FoodItemRow: View {
         }
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(
-            Color.umdRed.opacity(colorScheme == .dark ? 0.6 : 0.25),
-            lineWidth: colorScheme == .dark ? 1.5 : 1
-        ))
-        .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
+        .homeCard()
+        .pressEffect()
         .overlay {
             if showHeartAnimation {
                 Image(systemName: "heart.fill")
@@ -130,32 +124,18 @@ struct FoodItemRow: View {
         if !dietaryTags.isEmpty || !allergenTags.isEmpty || highProtein {
             FlowLayout(spacing: 4) {
                 ForEach(dietaryTags, id: \.self) { icon in
-                    tagPill(text: DietaryStyles.dietaryShortLabel(for: icon),
-                            textColor: DietaryStyles.dietaryColor(for: icon),
-                            bgColor: DietaryStyles.dietaryBgColor(for: icon))
+                    DietaryTag(text: DietaryStyles.dietaryShortLabel(for: icon),
+                               textColor: DietaryStyles.dietaryColor(for: icon),
+                               bgColor: DietaryStyles.dietaryBgColor(for: icon))
                 }
                 if highProtein {
-                    tagPill(text: "HIGH PROTEIN",
-                            textColor: Color(.secondaryLabel),
-                            bgColor: Color(.systemGray5))
+                    DietaryTag(text: "High Protein")
                 }
                 ForEach(allergenTags, id: \.self) { icon in
-                    tagPill(text: DietaryStyles.allergenAbbrev(for: icon),
-                            textColor: Color(.secondaryLabel),
-                            bgColor: Color(.systemGray5))
+                    DietaryTag(text: DietaryStyles.allergenAbbrev(for: icon))
                 }
             }
         }
-    }
-
-    private func tagPill(text: String, textColor: Color, bgColor: Color) -> some View {
-        Text(text.uppercased())
-            .font(.inter(size: 10, weight: .medium))
-            .foregroundStyle(textColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(bgColor)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: - Action Buttons
@@ -180,7 +160,7 @@ struct FoodItemRow: View {
                 }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
     }
 
     private var favoriteButton: some View {
@@ -196,7 +176,7 @@ struct FoodItemRow: View {
                     .foregroundStyle(favorites.isFavorite(recNum: item.recNum) ? Color.umdRed : Color(.systemGray3))
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
     }
 
     // MARK: - Calorie Resolution
