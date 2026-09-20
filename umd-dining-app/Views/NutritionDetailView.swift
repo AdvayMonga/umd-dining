@@ -215,9 +215,9 @@ struct NutritionDetailView: View {
                         FlowLayout(spacing: 4) {
                             ForEach(combinedIcons, id: \.self) { icon in
                                 if DietaryStyles.isAllergen(icon) {
-                                    DietaryTag(text: DietaryStyles.allergenAbbrev(for: icon))
+                                    DietaryTag(text: DietaryStyles.dietaryLabel(for: icon))
                                 } else {
-                                    DietaryTag(text: DietaryStyles.dietaryShortLabel(for: icon),
+                                    DietaryTag(text: DietaryStyles.dietaryLabel(for: icon),
                                                textColor: DietaryStyles.dietaryColor(for: icon),
                                                bgColor: DietaryStyles.dietaryBgColor(for: icon))
                                 }
@@ -375,7 +375,8 @@ struct NutritionDetailView: View {
             VStack(spacing: 0) {
                 ForEach(visibleKey, id: \.self) { key in
                     if let value = nutritionValue(key, from: nutrition) {
-                        nutritionRow(label: normalizedKey(key), value: value)
+                        nutritionRow(label: normalizedKey(key), value: value,
+                                     isLast: extraKeys.isEmpty && key == visibleKey.last)
                     }
                 }
 
@@ -399,7 +400,8 @@ struct NutritionDetailView: View {
                     if showAllNutrition {
                         ForEach(extraKeys, id: \.self) { key in
                             if let value = nutrition[key] {
-                                nutritionRow(label: normalizedKey(key), value: value)
+                                nutritionRow(label: normalizedKey(key), value: value,
+                                             isLast: key == extraKeys.last)
                             }
                         }
                     }
@@ -410,7 +412,7 @@ struct NutritionDetailView: View {
         .padding(.horizontal, 16)
     }
 
-    private func nutritionRow(label: String, value: String) -> some View {
+    private func nutritionRow(label: String, value: String, isLast: Bool = false) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Text(label)
@@ -422,7 +424,9 @@ struct NutritionDetailView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            Divider().padding(.leading, 16)
+            if !isLast {
+                Divider().padding(.leading, 16)
+            }
         }
     }
 
