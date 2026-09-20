@@ -64,7 +64,7 @@ struct FoodItemRow: View {
             if showHeartAnimation {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 60))
-                    .foregroundStyle(.red.opacity(0.85))
+                    .foregroundStyle(Color.umdRed.opacity(0.85))
                     .transition(.scale.combined(with: .opacity))
             }
         }

@@ -129,7 +129,7 @@ struct DiningHallCard: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 5)
-                                .background(status.isClosingSoon ? Color.orange : status.isOpen ? Color.green : Color.red.opacity(0.9))
+                                .background(status.isClosingSoon ? Color.orange : status.isOpen ? Color.green : Color.umdRed)
                                 .clipShape(Capsule())
                         }
                         .padding(10)

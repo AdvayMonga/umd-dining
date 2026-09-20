@@ -360,7 +360,7 @@ struct HomeView: View {
             color = status.isClosingSoon ? .orange : .green
         } else {
             label = "CLOSED"
-            color = .red
+            color = .umdRed
         }
         return Text(label)
             .font(.inter(size: 10, weight: .bold))
