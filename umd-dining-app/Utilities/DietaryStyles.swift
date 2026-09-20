@@ -34,7 +34,7 @@ enum DietaryStyles {
 
     static func dietaryBgColor(for icon: String) -> Color {
         switch icon {
-        case "vegetarian", "vegan", "HalalFriendly": return Color.umdRed.opacity(0.08)
+        case "vegetarian", "vegan", "HalalFriendly": return Color.umdRed.opacity(0.15)
         default: return Color(red: 255/255, green: 251/255, blue: 235/255) // amber-50
         }
     }
@@ -82,12 +82,31 @@ enum DietaryStyles {
         case "Contains dairy":     return "Dairy"
         case "Contains egg":       return "Egg"
         case "Contains fish":      return "Fish"
-        case "Contains gluten":    return "GF"
+        case "Contains gluten":    return "Gluten"
         case "Contains nuts":      return "Nuts"
         case "Contains Shellfish": return "Shellfish"
         case "Contains sesame":    return "Sesame"
         case "Contains soy":       return "Soy"
         default:                   return icon.replacingOccurrences(of: "Contains ", with: "")
         }
+    }
+}
+
+// MARK: - Tag Pill
+
+// Shared by the food feed and the food detail page so tags match everywhere
+struct DietaryTag: View {
+    let text: String
+    var textColor: Color = Color(.secondaryLabel)
+    var bgColor: Color = Color(.systemGray5)
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.inter(size: 10, weight: .medium))
+            .foregroundStyle(textColor)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(bgColor)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 }

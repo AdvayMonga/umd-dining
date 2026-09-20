@@ -130,31 +130,17 @@ struct NutritionDetailView: View {
             VStack(alignment: .leading, spacing: 20) {
                 // Food name — wraps for long names
                 Text(foodName)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal)
+                    .font(.inter(size: 24, weight: .bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 16)
 
                 if !tags.isEmpty {
-                    HStack(spacing: 6) {
+                    FlowLayout(spacing: 4) {
                         ForEach(tags, id: \.self) { tag in
-                            HStack(spacing: 3) {
-                                if let icon = DietaryStyles.tagIcon(for: tag) {
-                                    Image(systemName: icon)
-                                        .font(.system(size: 10, weight: .bold))
-                                }
-                                Text(DietaryStyles.tagLabel(for: tag))
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(DietaryStyles.tagColor(for: tag).opacity(0.15))
-                            .foregroundStyle(DietaryStyles.tagColor(for: tag))
-                            .clipShape(Capsule())
+                            DietaryTag(text: DietaryStyles.tagLabel(for: tag))
                         }
                     }
-                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
                 }
 
                 // Hero card — serving info left, calories right
@@ -166,14 +152,13 @@ struct NutritionDetailView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         if let size = servingSize {
                             Text("Serving Size: \(normalizeServingSize(size))")
-                                .font(.subheadline)
-                                .fontWeight(.bold)
+                                .font(.inter(size: 14, weight: .semibold))
                                 .foregroundStyle(.secondary)
                         }
                         if let count = servingsPerContainer {
                             let number = count.filter { $0.isNumber || $0 == "." }
                             Text("\(number.isEmpty ? count : number) servings per container")
-                                .font(.subheadline)
+                                .font(.inter(size: 13))
                                 .foregroundStyle(.secondary)
                         }
                         AvailabilityLabel(
@@ -189,22 +174,22 @@ struct NutritionDetailView: View {
                     if let cal = calories {
                         VStack(spacing: 0) {
                             Text(cal)
-                                .font(.system(size: 48, weight: .bold))
+                                .font(.inter(size: 44, weight: .bold))
                                 .foregroundStyle(Color.umdRed)
-                            Text("Calories")
-                                .font(.subheadline)
+                            Text("CALORIES")
+                                .font(.inter(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
+                                .kerning(0.5)
                         }
                     }
                 }
-                .padding()
-                .background(Color.umdRed.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal)
+                .padding(16)
+                .homeCard()
+                .padding(.horizontal, 16)
 
                 if info.nutrition.isEmpty || calories == nil {
                     Text("Nutrition unavailable")
-                        .font(.subheadline)
+                        .font(.inter(size: 14))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -225,64 +210,65 @@ struct NutritionDetailView: View {
                     let lifestyleIcons = info.dietaryIcons.filter { !DietaryStyles.isAllergen($0) }
                     let combinedIcons = allergenIcons + lifestyleIcons
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Allergens and Dietary")
-                            .font(.headline)
-                        FlowLayout(spacing: 6) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionHeader(title: "Allergens and Dietary")
+                        FlowLayout(spacing: 4) {
                             ForEach(combinedIcons, id: \.self) { icon in
-                                Text(DietaryStyles.dietaryLabel(for: icon))
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(DietaryStyles.dietaryColor(for: icon).opacity(0.15))
-                                    .foregroundStyle(DietaryStyles.dietaryColor(for: icon))
-                                    .clipShape(Capsule())
+                                if DietaryStyles.isAllergen(icon) {
+                                    DietaryTag(text: DietaryStyles.allergenAbbrev(for: icon))
+                                } else {
+                                    DietaryTag(text: DietaryStyles.dietaryShortLabel(for: icon),
+                                               textColor: DietaryStyles.dietaryColor(for: icon),
+                                               bgColor: DietaryStyles.dietaryBgColor(for: icon))
+                                }
                             }
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
                 }
 
                 // Ingredients
                 if !info.ingredients.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Ingredients")
-                            .font(.headline)
+                    VStack(alignment: .leading, spacing: 10) {
+                        SectionHeader(title: "Ingredients")
                         Text(info.ingredients)
-                            .font(.caption)
+                            .font(.inter(size: 12))
                             .foregroundStyle(.secondary)
+                            .padding(16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .homeCard()
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
                 }
             }
-            .padding(.vertical)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
+        .background(Color.umdBackground)
     }
 
     private func macrosSection(_ nutrition: [String: String]) -> some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 10) {
             macroItem(label: "Protein", value: nutritionValue("Protein", from: nutrition), color: .blue)
             macroItem(label: "Carbs", value: nutritionValue("Total Carbohydrate", from: nutrition), color: .green)
             macroItem(label: "Fat", value: nutritionValue("Total Fat", from: nutrition), color: .orange)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 16)
     }
 
     private func macroItem(label: String, value: String?, color: Color) -> some View {
         VStack(spacing: 4) {
             Text(value ?? "--")
-                .font(.title3)
-                .fontWeight(.bold)
+                .font(.inter(size: 20, weight: .bold))
                 .foregroundStyle(color)
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(label.uppercased())
+                .font(.inter(size: 11, weight: .bold))
+                .foregroundStyle(color)
+                .kerning(1)
         }
         .frame(maxWidth: .infinity)
-        .padding()
-        .background(color.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.vertical, 14)
+        .homeCard(tint: color)
     }
 
     private static let hallNames: [String: String] = [
@@ -316,14 +302,13 @@ struct NutritionDetailView: View {
             } label: {
                 HStack {
                     Text(similarFoodsLabel)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
+                        .font(.inter(size: 15, weight: .semibold))
                     if viewModel.similarFoodsLoading {
                         ProgressView()
                             .scaleEffect(0.7)
                     } else if let foods = viewModel.similarFoods {
                         Text("(\(foods.count))")
-                            .font(.caption)
+                            .font(.inter(size: 12))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -331,7 +316,7 @@ struct NutritionDetailView: View {
                         .font(.caption)
                 }
                 .foregroundStyle(Color.umdRed)
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 10)
             }
 
@@ -347,7 +332,7 @@ struct NutritionDetailView: View {
                             .animation(.easeOut(duration: 0.25).delay(Double(index) * 0.05), value: showSimilarFoods)
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
             }
         }
     }
@@ -384,59 +369,60 @@ struct NutritionDetailView: View {
             return !isExcluded && !isKey
         }
 
-        return VStack(alignment: .leading, spacing: 0) {
-            Text("Nutrition Facts")
-                .font(.headline)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+        return VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "Nutrition Facts")
 
-            ForEach(visibleKey, id: \.self) { key in
-                if let value = nutritionValue(key, from: nutrition) {
-                    nutritionRow(label: normalizedKey(key), value: value)
-                }
-            }
-
-            if !extraKeys.isEmpty {
-                Button {
-                    withAnimation { showAllNutrition.toggle() }
-                } label: {
-                    HStack {
-                        Text(showAllNutrition ? "Show Less" : "Show All Nutrition")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        Spacer()
-                        Image(systemName: showAllNutrition ? "chevron.up" : "chevron.down")
-                            .font(.caption)
+            VStack(spacing: 0) {
+                ForEach(visibleKey, id: \.self) { key in
+                    if let value = nutritionValue(key, from: nutrition) {
+                        nutritionRow(label: normalizedKey(key), value: value)
                     }
-                    .foregroundStyle(Color.umdRed)
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
                 }
 
-                if showAllNutrition {
-                    ForEach(extraKeys, id: \.self) { key in
-                        if let value = nutrition[key] {
-                            nutritionRow(label: normalizedKey(key), value: value)
+                if !extraKeys.isEmpty {
+                    Button {
+                        withAnimation { showAllNutrition.toggle() }
+                    } label: {
+                        HStack {
+                            Text(showAllNutrition ? "Show Less" : "Show All Nutrition")
+                                .font(.inter(size: 14, weight: .semibold))
+                            Spacer()
+                            Image(systemName: showAllNutrition ? "chevron.up" : "chevron.down")
+                                .font(.caption)
+                        }
+                        .foregroundStyle(Color.umdRed)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+
+                    if showAllNutrition {
+                        ForEach(extraKeys, id: \.self) { key in
+                            if let value = nutrition[key] {
+                                nutritionRow(label: normalizedKey(key), value: value)
+                            }
                         }
                     }
                 }
             }
+            .homeCard()
         }
+        .padding(.horizontal, 16)
     }
 
     private func nutritionRow(label: String, value: String) -> some View {
         VStack(spacing: 0) {
             HStack {
                 Text(label)
-                    .font(.subheadline)
+                    .font(.inter(size: 14, weight: .medium))
                 Spacer()
                 Text(value)
-                    .font(.subheadline)
+                    .font(.inter(size: 14))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 6)
-            Divider().padding(.horizontal)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            Divider().padding(.leading, 16)
         }
     }
 

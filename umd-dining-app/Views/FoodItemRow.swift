@@ -130,32 +130,18 @@ struct FoodItemRow: View {
         if !dietaryTags.isEmpty || !allergenTags.isEmpty || highProtein {
             FlowLayout(spacing: 4) {
                 ForEach(dietaryTags, id: \.self) { icon in
-                    tagPill(text: DietaryStyles.dietaryShortLabel(for: icon),
-                            textColor: DietaryStyles.dietaryColor(for: icon),
-                            bgColor: DietaryStyles.dietaryBgColor(for: icon))
+                    DietaryTag(text: DietaryStyles.dietaryShortLabel(for: icon),
+                               textColor: DietaryStyles.dietaryColor(for: icon),
+                               bgColor: DietaryStyles.dietaryBgColor(for: icon))
                 }
                 if highProtein {
-                    tagPill(text: "HIGH PROTEIN",
-                            textColor: Color(.secondaryLabel),
-                            bgColor: Color(.systemGray5))
+                    DietaryTag(text: "High Protein")
                 }
                 ForEach(allergenTags, id: \.self) { icon in
-                    tagPill(text: DietaryStyles.allergenAbbrev(for: icon),
-                            textColor: Color(.secondaryLabel),
-                            bgColor: Color(.systemGray5))
+                    DietaryTag(text: DietaryStyles.allergenAbbrev(for: icon))
                 }
             }
         }
-    }
-
-    private func tagPill(text: String, textColor: Color, bgColor: Color) -> some View {
-        Text(text.uppercased())
-            .font(.inter(size: 10, weight: .medium))
-            .foregroundStyle(textColor)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(bgColor)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: - Action Buttons
