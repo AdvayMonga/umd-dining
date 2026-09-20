@@ -80,7 +80,7 @@ struct ProfileView: View {
                         }
                     }
                     .padding(16)
-                    .homeCard(tint: .gray)
+                    .homeCard(tint: .gray, thin: true)
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 20)
@@ -235,7 +235,7 @@ struct ProfileView: View {
     ) -> some View {
         Button(action: action) {
             content()
-                .homeCard(tint: .gray)
+                .homeCard(tint: .gray, thin: true)
         }
         .buttonStyle(PressableButtonStyle())
     }
@@ -258,7 +258,7 @@ struct ProfileView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)
-        .homeCard(tint: .gray)
+        .homeCard(tint: .gray, thin: true)
     }
 
     // MARK: - Header
