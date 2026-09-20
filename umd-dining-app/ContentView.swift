@@ -10,8 +10,11 @@ struct ContentView: View {
     @State private var tabResetID = UUID()
     @AppStorage("hasCompletedTutorial") private var hasCompletedTutorial = true
 
-    init(initialHallId: String) {
+    init(initialHallId: String, initialTab: Int = 0) {
         self.initialHallId = initialHallId
+        // First-run tutorial walks through Home, so land there until it's done
+        let tutorialDone = UserDefaults.standard.object(forKey: "hasCompletedTutorial") as? Bool ?? true
+        _selectedTab = State(initialValue: tutorialDone ? initialTab : 0)
         UITabBar.appearance().isHidden = true
     }
 
@@ -89,7 +92,8 @@ private struct TabBarItem: View {
     }
 }
 
-private struct CustomTabBar: View {
+// Shared with DiningHallPickerView
+struct CustomTabBar: View {
     @Binding var selectedTab: Int
 
     var body: some View {

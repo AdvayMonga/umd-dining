@@ -12,6 +12,7 @@ struct UMD_DiningApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasCheckedCredential = false
     @State private var selectedHallId: String? = nil
+    @State private var selectedTab = 0
 
     var body: some Scene {
         WindowGroup {
@@ -23,7 +24,7 @@ struct UMD_DiningApp: App {
                     }
                     .preferredColorScheme(isDarkMode ? .dark : .light)
                 } else if let hallId = selectedHallId {
-                    ContentView(initialHallId: hallId)
+                    ContentView(initialHallId: hallId, initialTab: selectedTab)
                         .preferredColorScheme(isDarkMode ? .dark : .light)
                         .environment(authManager)
                         .environment(favoritesManager)
@@ -50,10 +51,12 @@ struct UMD_DiningApp: App {
                         }
                 } else {
                     DiningHallPickerView(
-                        userName: authManager.displayName ?? "",
                         selectedHallId: nil,
-                        onSelect: { id in
-                            withAnimation(.easeInOut(duration: 0.35)) { selectedHallId = id }
+                        onSelect: { id, tab in
+                            withAnimation(.easeInOut(duration: 0.35)) {
+                                selectedHallId = id
+                                selectedTab = tab
+                            }
                         }
                     )
                     .preferredColorScheme(isDarkMode ? .dark : .light)

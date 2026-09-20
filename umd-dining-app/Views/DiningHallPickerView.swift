@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct DiningHallPickerView: View {
-    let userName: String?
     let selectedHallId: String?
-    let onSelect: (String) -> Void
+    let onSelect: (_ hallId: String, _ tab: Int) -> Void
 
     private let halls: [(id: String, name: String, imageAlignment: Alignment)] = [
         ("19", "Yahentamitsi",      .center),
@@ -11,42 +10,44 @@ struct DiningHallPickerView: View {
         ("16", "South Campus Diner", .center)
     ]
 
-    private var displayName: String {
-        guard let name = userName, !name.isEmpty else { return "Terp" }
-        return name.components(separatedBy: " ").first ?? name
+    // First preferred hall (in hall order), else Yahentamitsi
+    private var defaultHall: String {
+        let prefs = UserPreferences.shared.preferredDiningHalls
+        return halls.map(\.id).first(where: prefs.contains) ?? "19"
+    }
+
+    // Home stays selected; Tracker/Profile open the app on that tab
+    private var tabBinding: Binding<Int> {
+        Binding(
+            get: { 0 },
+            set: { tab in if tab != 0 { onSelect(defaultHall, tab) } }
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Greeting — shown on launch picker only
-            if userName != nil {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("WELCOME BACK, \(displayName.uppercased())!")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .tracking(0.5)
-                    Text("Hungry today?")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                }
-                .padding(.horizontal)
+            // Header — same metrics as HomeView so nothing shifts on entry
+            Text("UMD Dining")
+                .font(.inter(size: 22, weight: .bold))
+                .foregroundStyle(Color.umdRed)
+                .frame(height: 36)
+                .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 10)
-            }
+                .padding(.bottom, 8)
 
-            // Section label + View Hours link
+            // Prompt + View Hours link
             HStack {
-                Text("Dining Halls")
-                    .font(.headline)
-                    .fontWeight(.semibold)
+                Text("Hungry? Pick a dining hall.")
+                    .font(.inter(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Spacer()
                 Link("View Hours", destination: URL(string: "https://dining.umd.edu/hours-locations/dining-halls")!)
-                    .font(.subheadline)
+                    .font(.inter(size: 14, weight: .medium))
                     .foregroundStyle(Color.umdRed)
             }
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
 
             // Cards — fill remaining space, no scroll needed
             VStack(spacing: 8) {
@@ -55,18 +56,21 @@ struct DiningHallPickerView: View {
                         hallId: hall.id,
                         hallName: hall.name,
                         imageAlignment: hall.imageAlignment,
-                        onTap: { onSelect(hall.id) }
+                        onTap: { onSelect(hall.id, 0) }
                     )
                     .frame(maxHeight: .infinity)
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.bottom, 8)
             .frame(maxHeight: .infinity)
         }
         // Stretch to full screen; background fills behind safe areas
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(Color.umdBackground.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            CustomTabBar(selectedTab: tabBinding)
+        }
     }
 }
 
@@ -162,8 +166,7 @@ struct DiningHallCard: View {
 
 #Preview {
     DiningHallPickerView(
-        userName: "Tory",
         selectedHallId: nil,
-        onSelect: { _ in }
+        onSelect: { _, _ in }
     )
 }
