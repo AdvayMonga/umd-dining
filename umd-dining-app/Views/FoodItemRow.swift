@@ -85,12 +85,13 @@ struct FoodItemRow: View {
             }
         }
         .onTapGesture(count: 1) {
-            // Dip on the tap itself, not on touch-down, so scrolling stays clean
+            // Dip on the tap itself, not on touch-down, so scrolling stays clean.
+            // Navigation fires immediately; the dip plays out behind the push.
+            onTap?()
             withAnimation(.easeOut(duration: 0.05)) { isPressed = true }
             Task {
                 try? await Task.sleep(for: .milliseconds(45))
                 withAnimation(.easeOut(duration: 0.08)) { isPressed = false }
-                onTap?()
             }
         }
         .fullScreenCover(isPresented: $showServingPicker) {

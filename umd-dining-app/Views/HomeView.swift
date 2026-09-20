@@ -62,21 +62,6 @@ struct HomeView: View {
                     )
                     .navigationTransition(.zoom(sourceID: "\(data.station)-\(data.diningHallId)", in: namespace))
                 }
-                .sheet(isPresented: $showFilter) {
-                    FilterOverlay(
-                        filterVegetarian: $viewModel.filterVegetarian,
-                        filterVegan: $viewModel.filterVegan,
-                        filterHalal: $viewModel.filterHalal,
-                        filterGlutenFree: $viewModel.filterGlutenFree,
-                        filterDairyFree: $viewModel.filterDairyFree,
-                        filterHighProtein: $viewModel.filterHighProtein,
-                        filterAllergens: $viewModel.filterAllergens,
-                        onDismiss: {
-                            showFilter = false
-                            Task { await viewModel.loadMenus() }
-                        }
-                    )
-                }
                 .task {
                     viewModel.autoSelectMealPeriod()
                     await viewModel.loadMenus()
@@ -99,6 +84,24 @@ struct HomeView: View {
                 .transition(.opacity)
                 .zIndex(2)
             }
+
+            if showFilter {
+                FilterOverlay(
+                    filterVegetarian: $viewModel.filterVegetarian,
+                    filterVegan: $viewModel.filterVegan,
+                    filterHalal: $viewModel.filterHalal,
+                    filterGlutenFree: $viewModel.filterGlutenFree,
+                    filterDairyFree: $viewModel.filterDairyFree,
+                    filterHighProtein: $viewModel.filterHighProtein,
+                    filterAllergens: $viewModel.filterAllergens,
+                    onDismiss: {
+                        withAnimation(.easeInOut(duration: 0.3)) { showFilter = false }
+                        Task { await viewModel.loadMenus() }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(3)
+            }
         }
         .id(tabResetID)
         .onChange(of: tabResetID) {
@@ -118,7 +121,9 @@ struct HomeView: View {
 
             Spacer()
 
-            Button { showFilter = true } label: {
+            Button {
+                withAnimation(.easeInOut(duration: 0.3)) { showFilter = true }
+            } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color.umdRed)
