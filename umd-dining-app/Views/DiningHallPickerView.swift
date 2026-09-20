@@ -35,9 +35,9 @@ struct DiningHallPickerView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
-            // Prompt + View Hours link
+            // Section label + View Hours link
             HStack {
-                Text("Hungry? Pick a dining hall.")
+                Text("Dining Halls")
                     .font(.inter(size: 17, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer()
