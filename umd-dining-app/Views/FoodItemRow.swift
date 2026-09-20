@@ -15,6 +15,7 @@ struct FoodItemRow: View {
     @State private var pendingNutrition: [String: String]?
     @State private var showHeartAnimation = false
     @State private var resolvedCalories: String?
+    @State private var isPressed = false
 
     private var displayCalories: String? {
         // Prefer nutrition bundled inline in API response (e.g. from fetchMenu)
@@ -59,7 +60,7 @@ struct FoodItemRow: View {
         .padding(.vertical, 16)
         .padding(.horizontal, 16)
         .homeCard()
-        .pressEffect()
+        .scaleEffect(isPressed ? 0.97 : 1)
         .overlay {
             if showHeartAnimation {
                 Image(systemName: "heart.fill")
@@ -83,7 +84,15 @@ struct FoodItemRow: View {
                 withAnimation(.easeOut(duration: 0.25)) { showHeartAnimation = false }
             }
         }
-        .onTapGesture(count: 1) { onTap?() }
+        .onTapGesture(count: 1) {
+            // Dip on the tap itself, not on touch-down, so scrolling stays clean
+            withAnimation(.easeOut(duration: 0.08)) { isPressed = true }
+            Task {
+                try? await Task.sleep(for: .milliseconds(90))
+                withAnimation(.easeOut(duration: 0.12)) { isPressed = false }
+                onTap?()
+            }
+        }
         .fullScreenCover(isPresented: $showServingPicker) {
             if let nutrition = pendingNutrition {
                 ServingPickerSheet(

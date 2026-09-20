@@ -59,29 +59,6 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-// Same dip for views driven by tap gestures rather than a Button.
-// A long press that never completes tracks touch-down without eating taps;
-// @GestureState releases it when the finger lifts or the view scrolls away.
-struct PressEffect: ViewModifier {
-    @GestureState private var isPressed = false
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: isPressed)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: .infinity, maximumDistance: 20)
-                    .updating($isPressed) { _, state, _ in state = true }
-            )
-    }
-}
-
-extension View {
-    func pressEffect() -> some View {
-        modifier(PressEffect())
-    }
-}
-
 extension View {
     func homeCard(tint: Color = .umdRed) -> some View {
         modifier(HomeCardStyle(tint: tint))
