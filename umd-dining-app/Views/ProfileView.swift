@@ -95,7 +95,7 @@ struct ProfileView: View {
                         } label: {
                             navItemRow(icon: "fork.knife", title: "Cuisine Preferences")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle())
 
                         // Allergens & Dietary Needs
                         NavigationLink {
@@ -103,7 +103,7 @@ struct ProfileView: View {
                         } label: {
                             navItemRow(icon: "exclamationmark.triangle", title: "Allergens & Dietary Needs")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle())
 
                         // Manage Favorites
                         NavigationLink {
@@ -111,7 +111,7 @@ struct ProfileView: View {
                         } label: {
                             navItemRow(icon: "heart", title: "Manage Favorites")
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(PressableButtonStyle())
                     }
                     .padding(.horizontal, 16)
 
@@ -237,7 +237,7 @@ struct ProfileView: View {
             content()
                 .homeCard(tint: .gray)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableButtonStyle())
     }
 
     // MARK: - Nav Item Row
