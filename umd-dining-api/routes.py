@@ -178,6 +178,8 @@ async def _get_trending():
         pipeline = [
             {'$match': {'added_at': {'$gte': cutoff}}},
             {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+            # one person's favorite isn't a trend
+            {'$match': {'count': {'$gte': 2}}},
             {'$sort': {'count': -1}},
             {'$limit': 50}
         ]
@@ -198,7 +200,7 @@ async def _get_trending_searches():
     async with _trending_searches_lock:
         if time.time() < _trending_searches_cache['expires']:
             return _trending_searches_cache['data']
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)  # stored as a date, not a string
         # Rank by distinct users (min 3) so one account can't plant a trending query
         pipeline = [
             {'$match': {'result_count': {'$gt': 0}, 'timestamp': {'$gte': cutoff}, 'user_id': {'$ne': None}}},
@@ -216,9 +218,22 @@ async def _get_trending_searches():
         return result
 
 
-# --- Global view counts cache (5-min TTL) ---
+# --- Student interest cache (5-min TTL) ---
 _global_views_cache: dict = {'data': {}, 'expires': 0}
 _global_views_lock = asyncio.Lock()
+
+# rec_num -> distinct students who viewed it in 30 days. A student counts once per
+# dish however often they tap; a view from the home feed counts half, since the
+# feed put it in front of them (search, tracker and station views are intent).
+STUDENT_INTEREST_PIPELINE = [
+    {'$group': {
+        '_id': {'rec_num': '$rec_num', 'user_id': '$user_id'},
+        'weight': {'$max': {'$cond': [{'$eq': ['$source', 'home']}, 0.5, 1.0]}},
+    }},
+    {'$group': {'_id': '$_id.rec_num', 'count': {'$sum': '$weight'}}},
+    {'$sort': {'count': -1}},
+    {'$limit': 500},
+]
 
 async def _get_global_views():
     if time.time() < _global_views_cache['expires']:
@@ -226,12 +241,10 @@ async def _get_global_views():
     async with _global_views_lock:
         if time.time() < _global_views_cache['expires']:
             return _global_views_cache['data']
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=30)  # stored as a date, not a string
         pipeline = [
-            {'$match': {'timestamp': {'$gte': cutoff}}},
-            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-            {'$sort': {'count': -1}},
-            {'$limit': 100},
+            {'$match': {'timestamp': {'$gte': cutoff}, 'user_id': {'$ne': None}}},
+            *STUDENT_INTEREST_PIPELINE,
         ]
         result = {}
         async for doc in db.item_views.aggregate(pipeline):
@@ -580,7 +593,7 @@ async def get_ranked_menu(
         """Get rec_nums this user has viewed in the last 14 days, with counts."""
         if not user_id:
             return {}
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
+        cutoff = datetime.now(timezone.utc) - timedelta(days=14)  # stored as a date, not a string
         pipeline = [
             {'$match': {'user_id': user_id, 'timestamp': {'$gte': cutoff}}},
             {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
@@ -594,36 +607,8 @@ async def get_ranked_menu(
         """Get view counts across all users (cached 5 min like trending)."""
         return await _get_global_views()
 
-    async def fetch_recent_hall_interest():
-        """Get dining halls the user has recently engaged with (last 14 days)."""
-        if not user_id:
-            return {}
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat()
-        docs = await db.item_views.find(
-            {'user_id': user_id, 'timestamp': {'$gte': cutoff}},
-            {'_id': 0, 'rec_num': 1}
-        ).sort('timestamp', -1).limit(50).to_list(None)
-        if not docs:
-            return {}
-        # Count which dining halls these rec_nums belong to using today's menu
-        view_rec_nums = [d['rec_num'] for d in docs]
-        menu_docs = await db.menus.find(
-            {'rec_num': {'$in': view_rec_nums}, 'date': date},
-            {'_id': 0, 'rec_num': 1, 'dining_hall_id': 1}
-        ).to_list(None)
-        hall_map = {}
-        for m in menu_docs:
-            if m['rec_num'] not in hall_map:
-                hall_map[m['rec_num']] = m['dining_hall_id']
-        result = {}
-        for d in docs:
-            hall_id = hall_map.get(d['rec_num'])
-            if hall_id:
-                result[hall_id] = result.get(hall_id, 0) + 1
-        return result
-
     (menu_entries, fav_rec_nums, fav_stations, user_prefs,
-     popular_rec_nums, user_views, global_views, hall_interest) = await asyncio.gather(
+     popular_rec_nums, user_views, global_views) = await asyncio.gather(
         fetch_menus(),
         fetch_user_favs(),
         fetch_user_stations(),
@@ -631,7 +616,6 @@ async def get_ranked_menu(
         _get_trending(),
         fetch_user_view_counts(),
         fetch_global_view_counts(),
-        fetch_recent_hall_interest(),
     )
 
     # --- Phase 2: Fetch foods (exclude embeddings) ---
@@ -688,19 +672,14 @@ async def get_ranked_menu(
             if doc.get('embedding') and doc['rec_num'] in foods:
                 foods[doc['rec_num']]['embedding'] = doc['embedding']
 
-    # Blend cuisine centroids: full strength at 0 favs, linearly decreasing to 0.5 at 20+ favs
+    # Cuisine centroids join the favorites as taste anchors; each extra favorite dilutes their share
     if has_cuisine_prefs:
         cuisine_docs = await db.cuisine_embeddings.find(
             {'cuisine': {'$in': user_prefs['cuisine_prefs']}},
             {'embedding': 1, 'cuisine': 1, '_id': 0}
         ).to_list(None)
         cuisine_embs = [doc['embedding'] for doc in cuisine_docs if doc.get('embedding')]
-        if cuisine_embs:
-            import numpy as np
-            num_favs = len(fav_embeddings)
-            weight = 1.0 - 0.5 * min(num_favs, 20) / 20  # 1.0 → 0.5 over 0–20 favs
-            weighted = [(np.asarray(e, dtype=np.float32) * weight).tolist() for e in cuisine_embs]
-            fav_embeddings = fav_embeddings + weighted
+        fav_embeddings = fav_embeddings + cuisine_embs
 
     preferred_halls = user_prefs.get('preferred_dining_halls', []) if user_prefs else []
 
@@ -717,7 +696,6 @@ async def get_ranked_menu(
         fav_embeddings=fav_embeddings,
         user_views=user_views,
         global_views=global_views,
-        hall_interest=hall_interest,
         preferred_halls=preferred_halls,
     )
 

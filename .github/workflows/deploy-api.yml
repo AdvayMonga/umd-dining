@@ -47,7 +47,7 @@ jobs:
             -x "venv/*" -x ".venv/*" -x "__pycache__/*" -x "*.pyc" \
             -x ".env*" -x "*/.env*" -x ".git*" -x ".DS_Store" \
             -x ".claude/*" -x ".elasticbeanstalk/*" \
-            -x "tests/*" -x "pytest.ini" -x "ruff.toml" -x "requirements-dev.txt"
+            -x "tests/*" -x "evals/*" -x "pytest.ini" -x "ruff.toml" -x "requirements-dev.txt"
 
       - name: Upload and deploy
         run: |

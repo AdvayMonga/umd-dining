@@ -59,6 +59,9 @@ class FakeCollection:
             elif isinstance(cond, dict) and "$in" in cond:
                 if doc.get(key) not in cond["$in"]:
                     return False
+            elif isinstance(cond, dict) and "$exists" in cond:
+                if (key in doc) != cond["$exists"]:
+                    return False
             elif doc.get(key) != cond:
                 return False
         return True
@@ -78,6 +81,13 @@ class FakeCollection:
         if existing is None and upsert:
             self.docs.append(dict(update.get("$setOnInsert", update.get("$set", {}))))
         return None
+
+    def aggregate(self, pipeline):
+        """Pipelines aren't interpreted: yields whatever the test put in .aggregate_docs."""
+        async def gen():
+            for d in getattr(self, "aggregate_docs", []):
+                yield d
+        return gen()
 
     async def distinct(self, field, query=None):
         return sorted({d.get(field) for d in self.docs

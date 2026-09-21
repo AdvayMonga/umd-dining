@@ -140,7 +140,9 @@ struct SearchOverlay: View {
                                 .font(.headline)
                                 .foregroundStyle(.secondary)
 
-                            let trending = menuItems.filter { $0.tags.contains("Trending") }.prefix(5)
+                            // The feed lists a dish once per hall and meal, so dedupe by recNum
+                            var seenTrending = Set<String>()
+                            let trending = menuItems.filter { $0.tags.contains("Trending") && seenTrending.insert($0.recNum).inserted }.prefix(5)
                             if !trending.isEmpty {
                                 VStack(alignment: .leading, spacing: 8) {
                                     Text("Trending foods you might like")

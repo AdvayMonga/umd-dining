@@ -73,7 +73,8 @@ class HomeViewModel {
         let allergenStr = filterAllergens.sorted().joined(separator: ",")
         let cuisinePrefs = UserPreferences.shared.cuisinePrefs.sorted().joined(separator: ",")
         let hallPrefs = UserPreferences.shared.preferredDiningHalls.sorted().joined(separator: ",")
-        return "\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHalal)|\(filterGlutenFree)|\(filterDairyFree)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)|\(hallPrefs)"
+        // v2: feeds cached by builds that still name-filtered condiments client-side must not be reused
+        return "v2|\(dateString)|\(filterVegetarian)|\(filterVegan)|\(filterHalal)|\(filterGlutenFree)|\(filterDairyFree)|\(filterHighProtein)|\(allergenStr)|\(cuisinePrefs)|\(hallPrefs)"
     }
 
     // Snapshot of favorites at load time — keeps feed order stable until refresh
@@ -97,65 +98,48 @@ class HomeViewModel {
         "beverage", "drink"
     ]
 
-    private static let sideItemKeywords = [
-        "dressing", "ranch", "vinaigrette", "sauce", "salsa", "mayo", "ketchup",
-        "mustard", "hot sauce", "butter", "creamer", "syrup", "gravy", "aioli",
-        "marinade", "relish", "hummus", "spread"
-    ]
-
     private func isSideStation(_ name: String) -> Bool {
         let lower = name.lowercased()
         return Self.sideStationKeywords.contains { lower.contains($0) }
     }
 
-    private func isSideItem(_ name: String) -> Bool {
-        let lower = name.lowercased()
-        return Self.sideItemKeywords.contains { lower.contains($0) }
-    }
-
-    // Max stations shown in the home feed before "See More" appears
+    // Stations shown before "See More" when the API doesn't flag featured dishes
     private static let maxRecommendedStations = 5
 
     var displayRows: [FeedRow] {
-        // Filter by meal + hall, excluding side stations and side items
+        // Filter by meal + hall, excluding side stations (the server already drops condiments and toppings)
         let filtered = allItems.filter { item in
             item.mealPeriod == selectedMealPeriod
             && item.diningHallId == selectedHallId
             && !isSideStation(item.station)
-            && !isSideItem(item.name)
-        }
-        // Minimal filter for building station list (no dietary filter applied)
-        let minimalFiltered = allItems.filter {
-            $0.mealPeriod == selectedMealPeriod
-            && $0.diningHallId == selectedHallId
-            && !isSideStation($0.station)
         }
 
         // --- Build all unique stations in order (favored first) ---
-        var allStationKeys: [String] = []
+        var allStations: [(station: String, hallId: String)] = []
         var seenKeys: Set<String> = []
-        for item in minimalFiltered {
-            let key = "\(item.station)_\(item.diningHallId)"
-            if !seenKeys.contains(key) { allStationKeys.append(key); seenKeys.insert(key) }
+        for item in filtered where seenKeys.insert("\(item.station)_\(item.diningHallId)").inserted {
+            allStations.append((item.station, item.diningHallId))
         }
-        let allStations: [(station: String, hallId: String)] = allStationKeys.compactMap { key in
-            guard let item = minimalFiltered.first(where: { "\($0.station)_\($0.diningHallId)" == key })
-            else { return nil }
-            // Skip stations that have no visible items after full filtering
-            guard filtered.contains(where: { $0.station == item.station && $0.diningHallId == item.diningHallId })
-            else { return nil }
-            return (item.station, item.diningHallId)
-        }.sorted {
-            let aFav = loadedFavStations.contains($0.station)
-            let bFav = loadedFavStations.contains($1.station)
-            if aFav != bFav { return aFav }
-            return false
-        }
+        // Favorite stations first; otherwise keep the server's order
+        allStations = allStations.filter { loadedFavStations.contains($0.station) }
+            + allStations.filter { !loadedFavStations.contains($0.station) }
 
-        // Split into recommended (first N) and discovery (rest)
-        let cap = Self.maxRecommendedStations
-        let recommendedStations = Array(allStations.prefix(cap))
-        let discoveryStations   = allStations.count > cap ? Array(allStations.dropFirst(cap)) : []
+        // Split into recommended and discovery. The server flags the dishes worth leading
+        // with, so a strong menu spreads over more stations and a thin one over fewer.
+        let usesFeatured = filtered.contains { $0.featured == true }
+        let recommendedStations: [(station: String, hallId: String)]
+        let discoveryStations: [(station: String, hallId: String)]
+        if usesFeatured {
+            let isFeatured: ((station: String, hallId: String)) -> Bool = { group in
+                filtered.contains { $0.featured == true && $0.station == group.station && $0.diningHallId == group.hallId }
+            }
+            recommendedStations = allStations.filter(isFeatured)
+            discoveryStations = allStations.filter { !isFeatured($0) }
+        } else {
+            let cap = Self.maxRecommendedStations
+            recommendedStations = Array(allStations.prefix(cap))
+            discoveryStations = Array(allStations.dropFirst(cap))
+        }
 
         // --- Flatten to FeedRow ---
         var rows: [FeedRow] = []
@@ -164,9 +148,13 @@ class HomeViewModel {
             let stationItems = filtered.filter { $0.station == group.station && $0.diningHallId == group.hallId }
             guard !stationItems.isEmpty else { continue }
             rows.append(.stationHeader(station: group.station, diningHallId: group.hallId, isDiscovery: false))
-            // Show max 3 items per station (4 for favorited stations)
-            let itemCap = loadedFavStations.contains(group.station) ? 4 : 3
-            Array(stationItems.prefix(itemCap)).forEach { rows.append(.menuItem($0)) }
+            if usesFeatured && !showDiscovery {
+                stationItems.filter { $0.featured == true }.forEach { rows.append(.menuItem($0)) }
+            } else {
+                // See More (or an API without featured flags): max 3 items per station, 4 for favorited stations
+                let itemCap = loadedFavStations.contains(group.station) ? 4 : 3
+                Array(stationItems.prefix(itemCap)).forEach { rows.append(.menuItem($0)) }
+            }
         }
 
         if !discoveryStations.isEmpty {

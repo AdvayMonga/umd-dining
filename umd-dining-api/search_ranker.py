@@ -103,7 +103,7 @@ def rank_search_results(
         fav_rec_nums:     set of rec_nums the user has favorited
         intake_counts:    dict: rec_num -> intake count from tracker
         user_views:       dict: rec_num -> personal view count
-        global_views:     dict: rec_num -> global view count
+        global_views:     dict: rec_num -> distinct students who viewed it
 
     Returns:
         list of food dicts, sorted by score descending, limited to 50.

@@ -260,7 +260,7 @@ def scrape_dining_hall(location_num, date):
 
 def _compute_frequencies(dining_hall_id, date, items):
     """Count how many distinct dates each rec_num appears at its station (last 14 days)."""
-    from pymongo import UpdateOne
+    from pymongo import UpdateMany
 
     rec_stations = set()
     for item in items:
@@ -273,7 +273,7 @@ def _compute_frequencies(dining_hall_id, date, items):
             'station': station,
             'dining_hall_id': dining_hall_id,
         }))
-        ops.append(UpdateOne(
+        ops.append(UpdateMany(
             {'date': date, 'dining_hall_id': dining_hall_id, 'rec_num': rec_num, 'station': station},
             {'$set': {'frequency': count}},
         ))
