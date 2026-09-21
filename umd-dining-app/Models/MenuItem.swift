@@ -14,6 +14,8 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
     let nutrition: [String: String]?
     let tag: String?
     let tags: [String]
+    /// Server-picked lead dish for the home screen; nil from older API versions
+    let featured: Bool?
     let availability: AvailabilityInfo?
 
     var id: String { recNum }
@@ -32,6 +34,7 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
         case nutrition
         case tag
         case tags
+        case featured
         case availability
     }
 
@@ -50,6 +53,7 @@ struct MenuItem: Codable, Identifiable, Hashable, Sendable {
         nutrition = try container.decodeIfPresent([String: String].self, forKey: .nutrition)
         tag = try container.decodeIfPresent(String.self, forKey: .tag)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        featured = try container.decodeIfPresent(Bool.self, forKey: .featured)
         availability = try container.decodeIfPresent(AvailabilityInfo.self, forKey: .availability)
     }
 }

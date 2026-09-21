@@ -2,22 +2,52 @@
 ranker.py — Feed ranking and recommendation logic.
 
 All scoring is pure logic: no DB access. The caller (routes.py) fetches
-all required data and passes it in. This keeps the ranker easy to test
-and easy to extend with AI/ML signals later.
+all required data and passes it in.
 
-Scoring is additive — multiple signals can fire for the same item.
-Tag is assigned based on the highest-priority signal that fired.
+Pipeline: gate out junk (toppings, condiments, plain staples) →
+score = appeal prior + rarity + personal signals + student interest →
+per dining hall and meal, up to 3 dishes per station, the best 20 flagged
+'featured' for the home screen. Scores are in appeal points (1-5).
+Quality of the whole thing is measured by evals/run_eval.py.
 """
 
-import random
+import math
 import re
 import zlib
-from embeddings import cosine_similarity, compute_centroid
 
+import numpy as np
 
-# ---------------------------------------------------------------------------
-# Nutrition helpers
-# ---------------------------------------------------------------------------
+from food_quality import get_quality, is_junk
+
+# --- Score weights (appeal points) ---
+W_MAIN = 0.5             # mains headline over sides
+W_DESSERT = -0.5         # desserts show up, but below real dishes
+W_RARITY = 0.8           # rotating special vs. daily staple
+W_FAVORITE = 4.0
+W_FAVORITE_EXTRA = 1.5   # favorites past the first MAX_FULL_FAVORITES in a slot
+W_FAV_STATION = 0.6
+W_TRENDING = 0.5
+W_PREF_MATCH = 0.6
+W_VIEWED = 0.2           # doubled at 3+ personal views
+W_STUDENTS = 2.4         # ceiling for student interest; see STUDENT_EVIDENCE_K
+W_AFFINITY = 1.6         # per point of taste affinity, capped
+W_HIGH_PROTEIN = 0.2
+W_PREFERRED_HALL = 10.0  # only affects cross-hall order
+W_JITTER = 0.3           # date-seeded, rotates near-ties day to day
+
+MAX_FULL_FAVORITES = 5
+PER_SLOT = 30
+PER_STATION = 3          # dishes per station card (one more for favorite stations)
+FEATURED_BUDGET = 20     # dishes the home screen leads with, per hall and meal
+FEATURED_MIN_APPEAL = 3  # weaker dishes wait behind See More unless favorited
+FREQUENCY_WINDOW = 14    # days of menus the scraper counts frequency over
+STUDENT_EVIDENCE_K = 20  # viewers of the top dish at which student interest reaches half strength
+HIGH_PROTEIN_GRAMS = 15
+AFFINITY_Z_CUT = 2.0     # similarity must beat the menu average by this many std-devs to count
+AFFINITY_CAP = 2.5
+RECOMMENDED_AFFINITY = 1.5
+SIMILAR_FALLBACK = 0.65  # raw cosine that counts as similar when the menu is too small for z-scores
+
 
 def _parse_number(value):
     """Extract the first number from a nutrition string like '32g' or '450'."""
@@ -29,60 +59,42 @@ def _parse_number(value):
         return None
 
 
-def _get_nutrient(nutrition, *keys):
-    """Try multiple key variants and return the first numeric value found."""
-    for key in keys:
+def get_protein(nutrition):
+    for key in ('Protein', 'Total Protein', 'protein'):
         val = _parse_number(nutrition.get(key))
         if val is not None:
             return val
     return None
 
 
-def get_protein(nutrition):
-    return _get_nutrient(nutrition, 'Protein', 'Total Protein', 'protein')
+def _affinity(candidates, foods, anchors):
+    """
+    Map rec_num -> taste affinity. Similarity is z-scored per anchor against
+    today's menu, and only the excess over AFFINITY_Z_CUT is summed, so an item
+    close to several favorites (a shared theme) beats one that merely shares an
+    ingredient with a single favorite. Dividing by sqrt(anchors) keeps the scale
+    the same for a user with 2 favorites and a user with 50.
+    """
+    if not anchors:
+        return {}
+    dim = len(anchors[0])
+    anchors = [a for a in anchors if len(a) == dim]
+    rec_nums = [r for r in candidates if len(foods.get(r, {}).get('embedding') or ()) == dim]
+    if not rec_nums:
+        return {}
+    items = np.nan_to_num(np.asarray([foods[r]['embedding'] for r in rec_nums], dtype=np.float32))
+    anch = np.nan_to_num(np.asarray(anchors, dtype=np.float32))
+    items /= np.linalg.norm(items, axis=1, keepdims=True) + 1e-10
+    anch /= np.linalg.norm(anch, axis=1, keepdims=True) + 1e-10
+    sims = items @ anch.T  # (n_items, n_anchors)
 
+    std = sims.std(axis=0)
+    if len(rec_nums) >= 10 and np.all(std > 1e-6):
+        excess = np.clip((sims - sims.mean(axis=0)) / std - AFFINITY_Z_CUT, 0, None)
+    else:
+        excess = np.where(sims >= SIMILAR_FALLBACK, RECOMMENDED_AFFINITY * math.sqrt(len(anchors)), 0.0)
+    return dict(zip(rec_nums, (excess.sum(axis=1) / math.sqrt(len(anchors))).tolist(), strict=True))
 
-def get_calories(nutrition):
-    return _get_nutrient(nutrition, 'Calories', 'calories', 'Energy')
-
-
-def get_carbs(nutrition):
-    return _get_nutrient(nutrition, 'Total Carbohydrate', 'Carbohydrates', 'carbs')
-
-
-def get_fat(nutrition):
-    return _get_nutrient(nutrition, 'Total Fat', 'Fat', 'fat')
-
-
-def _count_top_level_ingredients(ingredients_str):
-    """Count ingredients ignoring sub-ingredients in parentheses/brackets."""
-    if not ingredients_str:
-        return 0
-    # Remove everything inside parentheses and brackets
-    cleaned = re.sub(r'\([^)]*\)', '', ingredients_str)
-    cleaned = re.sub(r'\[[^\]]*\]', '', cleaned)
-    parts = [p.strip() for p in cleaned.split(',') if p.strip()]
-    return len(parts)
-
-
-def _is_single_ingredient(food):
-    """Check if a food item has 0 or 1 top-level ingredients (e.g. 'Banana', 'Rice')."""
-    return _count_top_level_ingredients(food.get('ingredients', '')) <= 1
-
-
-def _is_condiment(food):
-    """Heuristic: low-calorie (<80) items with few top-level ingredients (<=3) are likely condiments/toppings."""
-    nutrition = food.get('nutrition') or {}
-    calories = get_calories(nutrition)
-    ingredient_count = _count_top_level_ingredients(food.get('ingredients', ''))
-    if calories is not None and calories < 80 and ingredient_count <= 3:
-        return True
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Core ranking function
-# ---------------------------------------------------------------------------
 
 def rank_items(
     menu_entries,
@@ -95,8 +107,8 @@ def rank_items(
     fav_embeddings=None,
     user_views=None,
     global_views=None,
-    hall_interest=None,
     preferred_halls=None,
+    quality=get_quality,
 ):
     """
     Score, tag, and sort menu items for the feed.
@@ -108,241 +120,136 @@ def rank_items(
         fav_stations:      set of station names the user has favorited
         user_prefs:        dict with keys 'vegetarian' (bool), 'vegan' (bool)
         popular_rec_nums:  set of rec_nums trending across all users (by favorites)
-        date_seed:         string used to seed the shuffle of untagged items
-        fav_embeddings:    list of embedding vectors for user's favorites
+        date_seed:         string seeding the daily tie-break jitter
+        fav_embeddings:    taste anchors: embeddings of favorites and cuisine centroids
         user_views:        dict mapping rec_num -> view count for this user
-        global_views:      dict mapping rec_num -> view count across all users
-        hall_interest:     dict mapping dining_hall_id -> recent engagement count
+        global_views:      dict mapping rec_num -> distinct students who viewed it
+        preferred_halls:   dining_hall_ids the user prefers
+        quality:           callable (rec_num, food, station) -> (role, appeal)
 
     Returns:
-        list of item dicts with 'tag' field, ordered:
-          - scored items (score > 0) descending by score
-          - untagged entrees (score == 0) shuffled deterministically
-          - sides with no tag are excluded entirely
-          - single-ingredient items with no tag are excluded
+        list of item dicts with 'tag'/'tags'/'featured', best first within each
+        dining hall and meal period, each rec_num once per hall and meal.
     """
     is_vegetarian = user_prefs.get('vegetarian', False)
     is_vegan = user_prefs.get('vegan', False)
-    fav_centroid = compute_centroid(fav_embeddings) if fav_embeddings else None
-    # Similarity thresholds: relaxed with 0 favs (cuisine centroids are broad),
-    # gradually tightening as real favorites provide a sharper signal.
-    # Linearly interpolates from cuisine-only → favorites-only over 0–10 favs.
-    num_favs = len(fav_rec_nums)
-    t = min(num_favs, 10) / 10  # 0.0 at 0 favs → 1.0 at 10+ favs
-    sim_high = 0.65 + t * (0.73 - 0.65)  # 0.65 → 0.73
-    sim_mid = 0.57 + t * (0.65 - 0.57)   # 0.57 → 0.65
-    sim_low = 0.50 + t * (0.55 - 0.50)   # 0.50 → 0.55
     user_views = user_views or {}
     global_views = global_views or {}
-    hall_interest = hall_interest or {}
+    preferred_halls = preferred_halls or []
+    # Student interest counts for more as the app gathers evidence: a tiebreaker while the
+    # most-viewed dish has a handful of viewers, able to outweigh the appeal prior at ~100.
+    top_viewers = max(global_views.values(), default=0)
+    student_weight = W_STUDENTS * top_viewers / (top_viewers + STUDENT_EVIDENCE_K)
 
-    # Compute max global views for normalization
-    max_global_views = max(global_views.values()) if global_views else 1
-
-    scored = []    # (score, tag, item_dict)
-    untagged = []  # item_dicts with score == 0
-
+    # --- Gate: junk never enters the feed unless the user favorited it ---
+    candidates = []
     for entry in menu_entries:
-        food = foods.get(entry['rec_num'], {})
-        nutrition = food.get('nutrition') or {}
-        station = entry.get('station', '')
         rec_num = entry['rec_num']
-        dining_hall_id = entry.get('dining_hall_id', '')
+        food = foods.get(rec_num, {})
+        if not food.get('name'):
+            continue  # menu row whose food doc hasn't been scraped yet
+        role, appeal = quality(rec_num, food, entry.get('station', ''))
+        if is_junk(role, appeal) and rec_num not in fav_rec_nums:
+            continue
+        candidates.append((entry, food, role, appeal))
+
+    affinity = _affinity({e['rec_num'] for e, _, _, _ in candidates}, foods, fav_embeddings)
+
+    scored = []
+    for entry, food, role, appeal in candidates:
+        rec_num = entry['rec_num']
+        # Merge sides with parent station (e.g. "Grill Sides" → "Grill"), the name the app shows and favorites
+        station = re.sub(r'\s+Sides?\s*$', '', entry.get('station', ''), flags=re.IGNORECASE)
         dietary_icons = entry.get('dietary_icons', [])
-        is_side = 'side' in station.lower()
-        # Merge sides with parent station for display (e.g. "Grill Sides" → "Grill")
-        display_station = re.sub(r'\s+Sides?\s*$', '', station, flags=re.IGNORECASE) if is_side else station
-
-        # --- Compute additive score ---
-        score = 0
-        signals = set()
-
-        # Favorite: highest signal
-        if rec_num in fav_rec_nums:
-            score += 100
-            signals.add('favorite')
-
-        # Favorite station
-        if station in fav_stations:
-            score += 20
-            signals.add('favorite_station')
-
-        # Trending (favorited by many users)
-        if rec_num in popular_rec_nums:
-            score += 35
-            signals.add('trending')
-
-        # Dietary preference match
-        if is_vegan and 'vegan' in dietary_icons:
-            score += 20
-            signals.add('pref_match')
-        elif is_vegetarian and 'vegetarian' in dietary_icons:
-            score += 20
-            signals.add('pref_match')
-
-        # --- Engagement signals ---
-
-        # Personal re-engagement: user has viewed this item before
-        personal_views = user_views.get(rec_num, 0)
-        if personal_views >= 3:
-            score += 15
-            signals.add('personal_interest')
-        elif personal_views >= 1:
-            score += 8
-            signals.add('personal_interest')
-
-        # Global popularity by views (normalized, max +20)
-        gv = global_views.get(rec_num, 0)
-        if gv > 0:
-            popularity_score = min(20, int(20 * (gv / max_global_views)))
-            if popularity_score >= 5:
-                score += popularity_score
-                signals.add('popular_views')
-
-        # Recent dining hall interest: boost items from halls user recently engaged with
-        hall_engagement = hall_interest.get(dining_hall_id, 0)
-        if hall_engagement >= 5:
-            score += 15
-            signals.add('hall_interest')
-        elif hall_engagement >= 2:
-            score += 8
-            signals.add('hall_interest')
-
-        # Preferred dining halls: explicit user preference boost
-        if preferred_halls and dining_hall_id in preferred_halls:
-            score += 50
-            signals.add('preferred_hall')
-
-        # --- Condiment/topping penalty ---
-        is_condiment = _is_condiment(food)
-        if is_condiment and rec_num not in fav_rec_nums:
-            score -= 40
-            signals.add('condiment')
-
-        # --- Frequency signal (boost specials, penalize staples) ---
-        frequency = entry.get('frequency', 1)
-        meal = entry.get('meal_period', '')
-        is_breakfast = meal in ('Breakfast', 'Brunch')
         is_fav = rec_num in fav_rec_nums
-        is_daily_staple = frequency >= 8
-
-        if frequency <= 3:
-            score += 25
-            signals.add('rotating_special')
-        elif is_daily_staple and not is_fav and not is_breakfast:
-            score -= 35
-            signals.add('daily_staple')
-        elif frequency >= 6 and not is_fav and not is_breakfast:
-            score -= 20
-            signals.add('frequent_item')
-
-        # --- Nutrition & similarity signals (skip for sides and daily staples) ---
-        if not is_side:
-            protein = get_protein(nutrition)
-            carbs = get_carbs(nutrition)
-            fat = get_fat(nutrition)
-
-            if protein is not None and protein >= 15:
-                score += 5
-                signals.add('high_protein')
-
-            macro_total = (protein or 0) + (carbs or 0) + (fat or 0)
-            if (protein is not None and protein >= 5
-                    and macro_total > 0
-                    and protein / macro_total >= 0.25):
-                score += 5
-                signals.add('protein_ratio')
-
-            # Skip similarity for daily staples and single-ingredient items
-            # (avoids recommending "orange sauce" because user likes "orange chicken")
-            if fav_centroid is not None and not is_daily_staple and not _is_single_ingredient(food):
-                item_embedding = food.get('embedding')
-                if item_embedding:
-                    sim = cosine_similarity(fav_centroid, item_embedding)
-                    if sim >= sim_high:
-                        score += 55
-                        signals.add('similar_to_favorites')
-                    elif sim >= sim_mid:
-                        score += 40
-                        signals.add('similar_to_favorites')
-                    elif sim >= sim_low:
-                        score += 25
-                        signals.add('somewhat_similar')
-
-        # --- Filters ---
-
-        # Drop untagged sides
-        if is_side and score == 0:
-            continue
-
-        # Drop single-ingredient items unless they earned a score
-        if _is_single_ingredient(food) and score == 0:
-            continue
-
-        # --- Assign display tags ---
-        # Favorite, Trending, High Protein can all stack
-        # Recommended is excluded if Favorite is present
         tags = []
-        if 'favorite' in signals:
+
+        score = appeal
+        if role == 'main':
+            score += W_MAIN
+        elif role == 'dessert':
+            score += W_DESSERT
+
+        # Rarity: a missing frequency is neutral, never a "special"
+        frequency = entry.get('frequency')
+        rarity = 0.5 if frequency is None else 1 - min(frequency, FREQUENCY_WINDOW) / FREQUENCY_WINDOW
+        score += W_RARITY * rarity
+
+        if is_fav:
+            score += W_FAVORITE
             tags.append('Favorite')
-        if 'trending' in signals:
+        if station in fav_stations:
+            score += W_FAV_STATION
+        if rec_num in popular_rec_nums:
+            score += W_TRENDING
             tags.append('Trending')
-        if ('similar_to_favorites' in signals or 'somewhat_similar' in signals) and 'favorite' not in signals:
+        if (is_vegan and 'vegan' in dietary_icons) or (is_vegetarian and 'vegetarian' in dietary_icons):
+            score += W_PREF_MATCH
+
+        personal_views = user_views.get(rec_num, 0)
+        if personal_views:
+            score += W_VIEWED * (2 if personal_views >= 3 else 1)
+        if top_viewers:
+            score += student_weight * math.log1p(global_views.get(rec_num, 0)) / math.log1p(top_viewers)
+
+        taste = affinity.get(rec_num, 0.0)
+        score += W_AFFINITY * min(taste, AFFINITY_CAP)
+        if taste >= RECOMMENDED_AFFINITY and not is_fav:
             tags.append('Recommended')
-        if 'high_protein' in signals or 'protein_ratio' in signals:
+
+        protein = get_protein(food.get('nutrition') or {})
+        if protein is not None and protein >= HIGH_PROTEIN_GRAMS and role in ('main', 'side'):
+            score += W_HIGH_PROTEIN
             tags.append('High Protein')
 
-        tag = tags[0] if tags else None
+        if entry.get('dining_hall_id') in preferred_halls:
+            score += W_PREFERRED_HALL
+        # crc32, not hash(): hash() is randomized per process
+        score += W_JITTER * zlib.crc32(f'{date_seed}:{rec_num}'.encode()) / 2 ** 32
 
-        item = {
+        scored.append((score, appeal >= FEATURED_MIN_APPEAL or is_fav, {
             'name': food.get('name', ''),
             'rec_num': rec_num,
             'dining_hall_id': entry['dining_hall_id'],
             'date': entry['date'],
             'meal_period': entry.get('meal_period', 'Unknown'),
-            'station': display_station or 'Unknown',
+            'station': station or 'Unknown',
             'dietary_icons': dietary_icons,
-            'tag': tag,
+            'tag': tags[0] if tags else None,
             'tags': tags,
-        }
+        }))
 
-        if score > 0:
-            scored.append((score, item))
-        else:
-            untagged.append(item)
+    # --- Per slot (hall + meal): dedupe, soften surplus favorites, cap ---
+    slots = {}
+    for score, worthy, item in sorted(scored, key=lambda x: -x[0]):
+        slots.setdefault((item['dining_hall_id'], item['meal_period']), []).append((score, worthy, item))
 
-    # Sort scored items descending; shuffle untagged with date-seeded RNG
-    scored.sort(key=lambda x: -x[0])
-    # hash() is randomized per process — crc32 keeps the shuffle stable across restarts/workers
-    rng = random.Random(zlib.crc32(date_seed.encode()))
-    rng.shuffle(untagged)
-
-    # --- Diminishing returns on favorites ---
-    # Top 5 favorites keep full score, rest get penalized so other items surface
-    fav_count = 0
-    for i, (score, item) in enumerate(scored):
-        if 'Favorite' in item.get('tags', []):
-            fav_count += 1
-            if fav_count > 5:
-                scored[i] = (score - 70, item)
-    scored.sort(key=lambda x: -x[0])  # re-sort after adjustment
-
-    # --- Deduplicate and ensure 20 per hall per meal period (globally ranked) ---
-    all_items = [(s, item) for s, item in scored] + [(0, item) for item in untagged]
-    hall_meal_counts: dict[str, int] = {}  # "hallId_mealPeriod" -> count
-    seen_rec_nums: set[str] = set()
     result = []
-    for score, item in all_items:
-        rn = item['rec_num']
-        key = f"{item['dining_hall_id']}_{item['meal_period']}"
-        if rn in seen_rec_nums:
-            continue
-        if hall_meal_counts.get(key, 0) >= 20:
-            continue
-        seen_rec_nums.add(rn)
-        hall_meal_counts[key] = hall_meal_counts.get(key, 0) + 1
-        result.append((score, item))
+    for rows in slots.values():
+        seen, fav_count, unique = set(), 0, []
+        for score, worthy, item in rows:
+            if item['rec_num'] in seen:
+                continue
+            seen.add(item['rec_num'])
+            if 'Favorite' in item['tags']:
+                fav_count += 1
+                if fav_count > MAX_FULL_FAVORITES:
+                    score -= W_FAVORITE - W_FAVORITE_EXTRA
+            unique.append((score, worthy, item))
+        unique.sort(key=lambda x: -x[0])
 
-    # Sort globally by score so best items are first regardless of hall
+        # Cap each station card, then flag the dishes the home screen leads with
+        per_station, picked, featured = {}, [], 0
+        for score, worthy, item in unique:
+            station = item['station']
+            cap = PER_STATION + 1 if station in fav_stations else PER_STATION
+            if per_station.get(station, 0) < cap and len(picked) < PER_SLOT:
+                per_station[station] = per_station.get(station, 0) + 1
+                item['featured'] = worthy and featured < FEATURED_BUDGET
+                featured += item['featured']
+                picked.append((score, item))
+        result.extend(picked)
+
+    # Best first overall; within a hall and meal the order above is already by score
     result.sort(key=lambda x: -x[0])
     return [item for _, item in result]
