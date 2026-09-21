@@ -228,6 +228,20 @@ class HomeViewModel {
     }
 
     func loadMenus() async {
+        // Sync temp filters from saved profile preferences (once per session). Must run before the
+        // cache check: a launch served from disk returns early below, and syncing on a later load
+        // would overwrite the filter the user just applied.
+        if !hasLoadedPrefs {
+            let prefs = UserPreferences.shared
+            filterVegetarian = prefs.vegetarian
+            filterVegan = prefs.vegan
+            filterHalal = prefs.halal
+            filterGlutenFree = prefs.glutenFree
+            filterDairyFree = prefs.dairyFree
+            filterAllergens = prefs.allergens
+            hasLoadedPrefs = true
+        }
+
         // Try disk cache first (instant app launch)
         if allItems.isEmpty {
             loadFromDisk()
@@ -244,18 +258,6 @@ class HomeViewModel {
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
         showDiscovery = false
-
-        // Sync temp filters from saved profile preferences (once per session)
-        if !hasLoadedPrefs {
-            let prefs = UserPreferences.shared
-            filterVegetarian = prefs.vegetarian
-            filterVegan = prefs.vegan
-            filterHalal = prefs.halal
-            filterGlutenFree = prefs.glutenFree
-            filterDairyFree = prefs.dairyFree
-            filterAllergens = prefs.allergens
-            hasLoadedPrefs = true
-        }
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
         loadedFavRecNums = Set(FavoritesManager.shared.favoriteFoods.keys)
