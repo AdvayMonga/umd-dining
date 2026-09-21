@@ -236,7 +236,7 @@ struct NutritionDetailView: View {
                             .foregroundStyle(.secondary)
                             .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .homeCard()
+                            .homeCard(tint: .gray, thin: true)
                     }
                     .padding(.horizontal, 16)
                 }
@@ -407,7 +407,7 @@ struct NutritionDetailView: View {
                     }
                 }
             }
-            .homeCard()
+            .homeCard(tint: .gray, thin: true)
         }
         .padding(.horizontal, 16)
     }

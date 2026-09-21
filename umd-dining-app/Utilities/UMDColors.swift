@@ -34,6 +34,8 @@ extension Color {
 
 struct HomeCardStyle: ViewModifier {
     var tint: Color
+    // Secondary cards (gray) wear a lighter outline than the red ones
+    var thin: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
@@ -42,7 +44,9 @@ struct HomeCardStyle: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(
                 tint.opacity(colorScheme == .dark ? 0.7 : 0.35),
-                lineWidth: colorScheme == .dark ? 2 : 1.5
+                lineWidth: thin
+                    ? (colorScheme == .dark ? 1.5 : 1)
+                    : (colorScheme == .dark ? 2 : 1.5)
             ))
             .shadow(color: .black.opacity(colorScheme == .dark ? 0.35 : 0.10), radius: 5, x: 0, y: 2)
     }
@@ -59,31 +63,9 @@ struct PressableButtonStyle: ButtonStyle {
     }
 }
 
-// Same dip for views driven by tap gestures rather than a Button
-struct PressEffect: ViewModifier {
-    @State private var isPressed = false
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(isPressed ? 0.97 : 1)
-            .animation(.easeOut(duration: 0.12), value: isPressed)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in isPressed = true }
-                    .onEnded { _ in isPressed = false }
-            )
-    }
-}
-
 extension View {
-    func pressEffect() -> some View {
-        modifier(PressEffect())
-    }
-}
-
-extension View {
-    func homeCard(tint: Color = .umdRed) -> some View {
-        modifier(HomeCardStyle(tint: tint))
+    func homeCard(tint: Color = .umdRed, thin: Bool = false) -> some View {
+        modifier(HomeCardStyle(tint: tint, thin: thin))
     }
 }
 
