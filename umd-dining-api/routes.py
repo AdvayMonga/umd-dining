@@ -8,6 +8,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import jwt as pyjwt
@@ -61,7 +62,8 @@ def _ensure_string(value, field_name='field'):
 
 
 def _today_str() -> str:
-    return datetime.now().strftime('%-m/%-d/%Y')
+    # Campus time, not server time: the server runs on UTC, which is already "tomorrow" during dinner
+    return datetime.now(ZoneInfo('America/New_York')).strftime('%-m/%-d/%Y')
 
 
 async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> dict:
@@ -164,6 +166,10 @@ async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> 
 # --- Trending cache (global, 5-min TTL) ---
 _trending_cache: dict = {'data': set(), 'expires': 0}
 _trending_lock = asyncio.Lock()
+# Recent favorites when there are enough of them; otherwise fall back to the past year
+# so Trending isn't empty between semesters.
+TRENDING_WINDOWS_DAYS = (30, 365)
+TRENDING_MIN_DISHES = 5
 
 # --- Guest response cache (5-min TTL) ---
 _guest_menu_cache: dict = {}  # {cache_key: {'data': response_dict, 'expires': float}}
@@ -174,18 +180,20 @@ async def _get_trending():
     async with _trending_lock:
         if time.time() < _trending_cache['expires']:
             return _trending_cache['data']
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-        pipeline = [
-            {'$match': {'added_at': {'$gte': cutoff}}},
-            {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
-            # one person's favorite isn't a trend
-            {'$match': {'count': {'$gte': 2}}},
-            {'$sort': {'count': -1}},
-            {'$limit': 50}
-        ]
         result = set()
-        async for doc in db.favorites.aggregate(pipeline):
-            result.add(doc['_id'])
+        for days in TRENDING_WINDOWS_DAYS:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            pipeline = [
+                {'$match': {'added_at': {'$gte': cutoff}}},
+                {'$group': {'_id': '$rec_num', 'count': {'$sum': 1}}},
+                # one person's favorite isn't a trend
+                {'$match': {'count': {'$gte': 2}}},
+                {'$sort': {'count': -1}},
+                {'$limit': 50}
+            ]
+            result = {doc['_id'] async for doc in db.favorites.aggregate(pipeline)}
+            if len(result) >= TRENDING_MIN_DISHES:
+                break
         _trending_cache.update({'data': result, 'expires': time.time() + 300})
         return result
 

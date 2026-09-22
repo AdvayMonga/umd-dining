@@ -98,6 +98,7 @@ struct FavoritesView: View {
             .buttonStyle(.plain)
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+            .padding(.bottom, CustomTabBar.clearance)
             .background(Color.umdBackground)
         }
         .task(id: favorites.sortedFoods.map { $0.recNum }) {

@@ -76,7 +76,7 @@ struct FilterOverlay: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
-                .padding(.bottom, 100) // space for sticky button
+                .padding(.bottom, 100 + CustomTabBar.clearance) // space for sticky button
             }
             .background(Color(.systemBackground))
             .navigationTitle("Filter")
@@ -132,7 +132,7 @@ struct FilterOverlay: View {
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 16)
-        .padding(.bottom, 24)
+        .padding(.bottom, 12 + CustomTabBar.clearance)
         .background(
             LinearGradient(
                 colors: [Color(.systemBackground).opacity(0), Color(.systemBackground)],
