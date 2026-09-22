@@ -1,6 +1,10 @@
-# UMD Dining
+<p align="center">
+  <img src="docs/banner.png" alt="UMD Dining" width="100%">
+</p>
 
 An iOS app for browsing University of Maryland dining hall menus, with personalized food rankings, nutrition info, and dietary filtering.
+
+**[Website](https://api.umddining.com)** · **[App Store](https://apps.apple.com/us/app/umd-dining/id6761645776)**
 
 ## Structure
 
@@ -15,6 +19,7 @@ An iOS app for browsing University of Maryland dining hall menus, with personali
 - Filter by dining hall, dietary preference (vegetarian/vegan), and allergens
 - Search across all menu items
 - Favorite foods and stations
+- Nutrition tracking with daily goals
 
 ## Backend
 
