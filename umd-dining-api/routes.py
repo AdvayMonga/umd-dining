@@ -8,6 +8,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from typing import Optional
 
 import jwt as pyjwt
@@ -61,7 +62,8 @@ def _ensure_string(value, field_name='field'):
 
 
 def _today_str() -> str:
-    return datetime.now().strftime('%-m/%-d/%Y')
+    # Campus time, not server time: the server runs on UTC, which is already "tomorrow" during dinner
+    return datetime.now(ZoneInfo('America/New_York')).strftime('%-m/%-d/%Y')
 
 
 async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> dict:

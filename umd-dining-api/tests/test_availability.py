@@ -75,3 +75,17 @@ class TestEdgeCases:
     async def test_unparseable_stored_date_is_skipped(self, monkeypatch):
         result = await resolve(["A"], [menu("A", "not-a-date")], monkeypatch)
         assert result["A"]["unavailable_this_week"] is True
+
+
+class TestToday:
+    def test_today_is_campus_time_not_server_time(self, monkeypatch):
+        from datetime import datetime, timezone
+
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                # 8:30 PM Eastern on 9/21 is already 9/22 in UTC, where the server runs
+                return datetime(2026, 9, 22, 0, 30, tzinfo=timezone.utc).astimezone(tz)
+
+        monkeypatch.setattr(routes, "datetime", Frozen)
+        assert routes._today_str() == "9/21/2026"

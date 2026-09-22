@@ -11,5 +11,6 @@ pymongo==4.16.0
 python-dotenv==1.2.1
 requests==2.32.5
 slowapi==0.1.9
+tzdata==2026.4
 uvicorn[standard]==0.34.0
 uvloop==0.21.0
