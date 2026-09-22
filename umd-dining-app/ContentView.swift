@@ -94,6 +94,10 @@ private struct TabBarItem: View {
 
 // Shared with DiningHallPickerView
 struct CustomTabBar: View {
+    /// Height above the bottom safe area. The bar floats over tab content, so views that pin
+    /// something to the bottom edge add this much room.
+    static let clearance: CGFloat = 52
+
     @Binding var selectedTab: Int
 
     var body: some View {

@@ -83,9 +83,12 @@ class FakeCollection:
         return None
 
     def aggregate(self, pipeline):
-        """Pipelines aren't interpreted: yields whatever the test put in .aggregate_docs."""
+        """Pipelines aren't interpreted: yields .aggregate_docs, or calls it with the pipeline."""
+        docs = getattr(self, "aggregate_docs", [])
+        docs = docs(pipeline) if callable(docs) else docs
+
         async def gen():
-            for d in getattr(self, "aggregate_docs", []):
+            for d in docs:
                 yield d
         return gen()
 
