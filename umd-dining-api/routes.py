@@ -23,6 +23,7 @@ from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_wee
 from ranker import rank_items
 from search_ranker import rank_search_results
 from embeddings import generate_embedding_async
+import hours
 
 router = APIRouter()
 
@@ -1542,6 +1543,41 @@ async def remove_intake(request: Request, body: RemoveIntakeBody = Body(...), us
 
     await db.intake.delete_one(query)
     return {'success': True}
+
+
+# ---------------------------------------------------------------------------
+# Hall hours (UMD Dining's published schedule)
+# ---------------------------------------------------------------------------
+
+@router.get('/api/hours')
+@limiter.limit("30/minute")
+async def get_hours(
+    request: Request,
+    start: Optional[str] = Query(default=None, description='YYYY-MM-DD; defaults to today on campus'),
+    days: int = Query(default=14, ge=1, le=60),
+):
+    if start:
+        try:
+            start_date = datetime.strptime(start, '%Y-%m-%d').date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail='start must be YYYY-MM-DD')
+    else:
+        start_date = datetime.now(ZoneInfo('America/New_York')).date()
+    try:
+        # Blocking fetch on a cache miss (at most hourly) — keep it off the event loop
+        schedule, fetched_at = await asyncio.to_thread(hours.cache.get)
+    except hours.HoursUnavailable:
+        raise HTTPException(status_code=503, detail='hours unavailable')
+    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(days)]
+    # Per hall: date -> meal windows; [] = closed all day, missing date = unknown
+    return {
+        'success': True,
+        'start': dates[0],
+        'days': days,
+        'halls': hours.window_range(schedule, dates),
+        'source': hours.SOURCE_PAGE,
+        'fetched_at': fetched_at,
+    }
 
 
 # ---------------------------------------------------------------------------
