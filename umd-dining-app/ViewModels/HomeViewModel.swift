@@ -58,11 +58,29 @@ class HomeViewModel {
 
     var showDiscovery: Bool = false
 
-    // Network loads in flight — an empty menu isn't "closed" until they finish
-    private var inFlightLoads = 0
-    // Cache key `allItems` was actually loaded for. Until it matches, an empty feed means
-    // "not fetched yet", not "closed". Unlike lastLoadedKey, refreshes don't clear it.
+    // Cache keys of network loads in flight — an empty menu isn't "closed" until they finish
+    private var inFlightKeys: Set<String> = []
+    // Cache key `allItems` was actually loaded for. Unlike lastLoadedKey, refreshes don't clear it.
     private var itemsKey: String?
+    /// A load was cancelled before its items arrived. HomeView reloads when this turns on —
+    /// a cancelled `.task` is often replaced anyway (tab reset), so no error is shown for it.
+    private(set) var needsReload = false
+
+    struct MenuRequest {
+        let date: String
+        let hallIds: [String]
+        let vegetarian, vegan, halal, highProtein: Bool
+        let allergens: Set<String>
+    }
+
+    /// The network fetch, swappable so tests can control timing
+    @ObservationIgnored var fetchMenu: (MenuRequest) async throws -> [MenuItem] = { r in
+        try await DiningAPIService.shared.fetchRankedMenu(
+            date: r.date, diningHallIds: r.hallIds, userId: AuthManager.shared.userId,
+            vegetarian: r.vegetarian, vegan: r.vegan, halal: r.halal,
+            highProtein: r.highProtein, allergens: r.allergens
+        )
+    }
 
     // Cache: skip network call if same date + filters already loaded
     private var lastLoadedKey: String?
@@ -202,7 +220,9 @@ class HomeViewModel {
     func menuState(rows: [FeedRow]) -> HomeMenuState {
         HomeMenuState.resolve(
             isLoading: isLoading,
-            isFetching: inFlightLoads > 0 || itemsKey != currentCacheKey,
+            // Only a load that's running (or owed after a cancel) counts. A key changed by the
+            // filter overlay, with no load yet, resolves against the items on hand.
+            isFetching: !inFlightKeys.isEmpty || needsReload || itemsKey == nil,
             errorMessage: errorMessage,
             hasRows: !rows.isEmpty,
             hallMeals: availableMealPeriods,
@@ -273,10 +293,10 @@ class HomeViewModel {
         lastLoadedKey = keyId
     }
 
-    private func saveToDisk() {
+    private func saveToDisk(key: String) {
         guard let data = try? JSONEncoder().encode(allItems) else { return }
         UserDefaults.standard.set(data, forKey: Self.feedCacheKey)
-        UserDefaults.standard.set(currentCacheKey, forKey: Self.feedCacheKeyId)
+        UserDefaults.standard.set(key, forKey: Self.feedCacheKeyId)
     }
 
     func loadMenus() async {
@@ -304,15 +324,30 @@ class HomeViewModel {
         // still has to be re-checked against the new hall's offerings.
         guard lastLoadedKey != currentCacheKey else {
             itemsKey = lastLoadedKey
-            errorMessage = nil  // a cancelled load's message is stale once this key's items are in
+            needsReload = false
             reconcileMealPeriod()
             return
         }
 
+        // Capture the request before awaiting: date and filters can change while it's in flight
+        let requestKey = currentCacheKey
+        // Hall swipes during a load would otherwise fetch the same menu again
+        guard !inFlightKeys.contains(requestKey) else { return }
+        var effectiveAllergens = filterAllergens
+        if filterGlutenFree { effectiveAllergens.insert("Contains gluten") }
+        if filterDairyFree { effectiveAllergens.insert("Contains dairy") }
+        let request = MenuRequest(
+            date: dateString, hallIds: allHallIds,
+            vegetarian: filterVegetarian, vegan: filterVegan, halal: filterHalal,
+            highProtein: filterHighProtein, allergens: effectiveAllergens
+        )
+        let saveAfterLoad = filtersMatchDefaults
+
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
-        inFlightLoads += 1
-        defer { inFlightLoads -= 1 }
+        needsReload = false
+        inFlightKeys.insert(requestKey)
+        defer { inFlightKeys.remove(requestKey) }
         showDiscovery = false
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
@@ -320,43 +355,25 @@ class HomeViewModel {
         loadedFavStations = FavoritesManager.shared.favoriteStations
 
         do {
-            let userId = await AuthManager.shared.userId
-            var effectiveAllergens = filterAllergens
-            if filterGlutenFree { effectiveAllergens.insert("Contains gluten") }
-            if filterDairyFree { effectiveAllergens.insert("Contains dairy") }
-            allItems = try await DiningAPIService.shared.fetchRankedMenu(
-                date: dateString,
-                diningHallIds: allHallIds,
-                userId: userId,
-                vegetarian: filterVegetarian,
-                vegan: filterVegan,
-                halal: filterHalal,
-                highProtein: filterHighProtein,
-                allergens: effectiveAllergens
-            )
-            lastLoadedKey = currentCacheKey
-            itemsKey = lastLoadedKey
-            if filtersMatchDefaults {
-                saveToDisk()
+            let items = try await fetchMenu(request)
+            // A newer date or filter set took over while this was in flight; its own load applies
+            guard requestKey == currentCacheKey else { isLoading = false; return }
+            allItems = items
+            lastLoadedKey = requestKey
+            itemsKey = requestKey
+            if saveAfterLoad {
+                saveToDisk(key: requestKey)
             }
             reconcileMealPeriod()
-        } catch is CancellationError {
-            cancelledWithoutItems()
         } catch {
-            if Task.isCancelled {
-                cancelledWithoutItems()
-            } else {
+            if error is CancellationError || Task.isCancelled {
+                // Owe a reload only if this key's items never arrived and nothing newer replaced it
+                if itemsKey != requestKey && requestKey == currentCacheKey { needsReload = true }
+            } else if requestKey == currentCacheKey {
                 errorMessage = error.localizedDescription
             }
         }
         isLoading = false
-    }
-
-    /// A superseding load takes over, but if nothing replaced this one and the day's items never
-    /// arrived, offer Retry — neither an endless spinner nor a "closed" guess is honest
-    private func cancelledWithoutItems() {
-        guard inFlightLoads == 1, itemsKey != currentCacheKey else { return }
-        errorMessage = "Couldn't load menus."
     }
 
     func forceReloadMenus() async {

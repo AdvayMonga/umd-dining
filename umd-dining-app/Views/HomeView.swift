@@ -62,6 +62,10 @@ struct HomeView: View {
                     feedScrollRequest += 1
                     Task { await viewModel.loadMenus() }
                 }
+                .onChange(of: viewModel.needsReload) { _, needsReload in
+                    // An unstructured task, so the view teardown that cancelled the last load can't cancel this one
+                    if needsReload { Task { await viewModel.loadMenus() } }
+                }
             }
 
             if showSearch {

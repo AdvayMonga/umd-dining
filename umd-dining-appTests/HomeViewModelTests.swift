@@ -270,28 +270,101 @@ private func cancelledReload(_ vm: HomeViewModel) async {
     await task.value
 }
 
+/// A view model whose fetch never touches the network. High protein keeps loads out of the
+/// on-disk feed cache (only default filters are saved), so tests can't leak into each other.
+@MainActor
+private func stubbedViewModel(
+    hall: String = "19",
+    fetch: @escaping (HomeViewModel.MenuRequest) async throws -> [MenuItem] = { _ in
+        try Task.checkCancellation()
+        return []
+    }
+) -> HomeViewModel {
+    let vm = HomeViewModel(selectedHallId: hall)
+    vm.selectedDate = weekday
+    vm.filterHighProtein = true
+    vm.fetchMenu = fetch
+    return vm
+}
+
 @MainActor
 struct MenuStateTests {
 
     /// Regression: a cancelled refresh used to leave the feed on "Loading menus..." forever.
-    /// With nothing else in flight it now offers Retry.
-    @Test func cancelledLoadDoesNotSpinForever() async {
-        let vm = HomeViewModel(selectedHallId: "19")
-        vm.selectedDate = weekday
-        vm.allItems = [menuItem(recNum: "1", hall: "51", meal: "Lunch")]
+    /// It now owes a reload (HomeView runs it) instead of flashing an error a replacement load would clear.
+    @Test func cancelledLoadAsksForAReload() async {
+        let vm = stubbedViewModel { _ in
+            try Task.checkCancellation()
+            return [menuItem(recNum: "1", hall: "51", meal: "Lunch")]
+        }
         #expect(vm.menuState == .loading, "before any load finishes, empty means not fetched yet")
         await cancelledReload(vm)
-        #expect(vm.menuState == .error("Couldn't load menus."))
+        #expect(vm.needsReload)
+        #expect(vm.errorMessage == nil)
+        #expect(vm.menuState == .loading)
+
+        await vm.loadMenus()   // what HomeView does when needsReload turns on
+        #expect(!vm.needsReload)
+        if case .hallNotServing = vm.menuState {} else { Issue.record("expected the settled closed state, got \(vm.menuState)") }
     }
 
     /// A load cancelled before any items arrived knows nothing about the day — it mustn't call it closed
     @Test func cancelledBeforeAnyDataIsNotNoMenusPosted() async {
-        let vm = HomeViewModel(selectedHallId: "19")
-        vm.selectedDate = weekday
+        let vm = stubbedViewModel()
         await cancelledReload(vm)
         #expect(vm.allItems.isEmpty)
         if case .noMenusPosted = vm.menuState { Issue.record("claimed no menus without loading any") }
         if case .hallNotServing = vm.menuState { Issue.record("claimed the hall is closed without loading") }
+    }
+
+    /// The filter overlay changes the cache key live without starting a load — no spinner for that
+    @Test func editingFiltersDoesNotShowTheSpinner() async {
+        let vm = stubbedViewModel { _ in [menuItem(recNum: "1", hall: "51", meal: "Lunch")] }
+        await vm.loadMenus()
+        vm.filterVegan.toggle()
+        #expect(vm.menuState != .loading)
+    }
+
+    /// Regression: a slow load for an earlier day finishing last stamped its menu onto the new day
+    @Test func staleResultFromAnEarlierRequestIsDiscarded() async {
+        let (started, startedSignal) = AsyncStream<Void>.makeStream()
+        let (release, releaseSignal) = AsyncStream<Void>.makeStream()
+        let vm = stubbedViewModel { request in
+            if request.date == "9/3/2026" {
+                startedSignal.yield()
+                for await _ in release { break }
+                return [menuItem(recNum: "old", hall: "19", meal: "Lunch", date: "9/3/2026")]
+            }
+            return [menuItem(recNum: "new", hall: "19", meal: "Lunch", date: "9/4/2026")]
+        }
+        let slow = Task { await vm.loadMenus() }
+        for await _ in started { break }
+
+        vm.selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: weekday)!
+        await vm.loadMenus()
+        releaseSignal.yield()
+        await slow.value
+
+        #expect(vm.allItems.map(\.recNum) == ["new"])
+    }
+
+    /// Hall swipes during the first load call loadMenus again for the same key
+    @Test func concurrentLoadsForTheSameKeyFetchOnce() async {
+        var fetches = 0
+        let (release, releaseSignal) = AsyncStream<Void>.makeStream()
+        let vm = stubbedViewModel { _ in
+            fetches += 1
+            for await _ in release { break }
+            return [menuItem(recNum: "1", hall: "19", meal: "Lunch")]
+        }
+        let first = Task { await vm.loadMenus() }
+        await Task.yield()
+        vm.selectedHallId = "51"
+        await vm.loadMenus()
+        releaseSignal.yield()
+        await first.value
+        #expect(fetches == 1)
+        #expect(!vm.allItems.isEmpty)
     }
 
     /// Dinner is a real tab here, so the empty state mustn't say there's no dinner
