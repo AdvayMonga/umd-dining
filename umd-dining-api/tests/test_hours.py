@@ -199,6 +199,13 @@ async def test_route_rejects_bad_start(sheet_cache):
     assert exc.value.status_code == 400
 
 
+@pytest.mark.parametrize("start", ["9999-12-31", "0001-01-01"])
+async def test_route_rejects_a_start_far_from_today(sheet_cache, start):
+    with pytest.raises(HTTPException) as exc:
+        await get_hours(start=start, days=60)
+    assert exc.value.status_code == 400
+
+
 async def test_route_is_503_when_the_sheet_never_loaded(monkeypatch):
     monkeypatch.setattr(hours, "cache", hours.HoursCache(fetcher=lambda: "", clock=Clock()))
     with pytest.raises(HTTPException) as exc:

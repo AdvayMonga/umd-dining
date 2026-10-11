@@ -25,8 +25,8 @@ struct MealWindow {
     private func minuteToString(_ m: Int) -> String {
         let hour = m / 60
         let min = m % 60
-        let period = hour < 12 ? "AM" : "PM"
-        let displayHour = hour == 0 ? 12 : hour > 12 ? hour - 12 : hour
+        let period = hour < 12 || hour == 24 ? "AM" : "PM"   // 24:00 is midnight at the end of the day
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
         return min == 0 ? "\(displayHour) \(period)" : "\(displayHour):\(String(format: "%02d", min)) \(period)"
     }
 }

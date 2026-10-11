@@ -59,9 +59,19 @@ struct HallHoursDecodingTests {
         #expect(try liveDays()["51"]?["2026-10-13"] == nil)
     }
 
+    @Test func formatsMidnightNoonAndMorning() {
+        let w = MealWindow(name: "Late", openMinute: 0, closeMinute: 24 * 60)
+        #expect(w.openTimeString == "12 AM" && w.closeTimeString == "12 AM")
+        #expect(MealWindow(name: "Lunch", openMinute: 12 * 60, closeMinute: 12 * 60 + 30).closeTimeString == "12:30 PM")
+        #expect(MealWindow(name: "Dinner", openMinute: 9 * 60 + 5, closeMinute: 23 * 60).openTimeString == "9:05 AM")
+        #expect(MealWindow(name: "Dinner", openMinute: 9 * 60 + 5, closeMinute: 23 * 60).closeTimeString == "11 PM")
+    }
+
     @Test func parsesHourMinuteStrings() {
         #expect(HallHoursResponse.minutes("07:30") == 450)
         #expect(HallHoursResponse.minutes("24:00") == 1440)
+        #expect(HallHoursResponse.minutes("24:01") == nil)
+        #expect(HallHoursResponse.minutes("24:30") == nil)
         #expect(HallHoursResponse.minutes("7pm") == nil)
         #expect(HallHoursResponse.minutes("25:00") == nil)
     }

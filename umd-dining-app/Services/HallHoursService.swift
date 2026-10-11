@@ -35,7 +35,7 @@ struct HallHoursResponse: Codable, Sendable {
     static func minutes(_ hhmm: String) -> Int? {
         let parts = hhmm.split(separator: ":")
         guard parts.count == 2, let h = Int(parts[0]), let m = Int(parts[1]),
-              (0...24).contains(h), (0..<60).contains(m) else { return nil }
+              (0..<24).contains(h) || (h == 24 && m == 0), (0..<60).contains(m) else { return nil }
         return h * 60 + m
     }
 }

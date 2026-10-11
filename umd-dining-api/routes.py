@@ -1554,7 +1554,8 @@ async def remove_intake(request: Request, body: RemoveIntakeBody = Body(...), us
 # ---------------------------------------------------------------------------
 
 @router.get('/api/hours')
-@limiter.limit("30/minute")
+# Anonymous, so keyed by IP: a whole dorm can share one NAT address. Served from memory, so cheap
+@limiter.limit("300/minute")
 async def get_hours(
     request: Request,
     start: Optional[str] = Query(default=None, description='YYYY-MM-DD; defaults to today on campus'),
@@ -1565,6 +1566,9 @@ async def get_hours(
             start_date = datetime.strptime(start, '%Y-%m-%d').date()
         except ValueError:
             raise HTTPException(status_code=400, detail='start must be YYYY-MM-DD')
+        # The sheet only covers about a year; this also keeps start + days from overflowing
+        if abs((start_date - _campus_today()).days) > 730:
+            raise HTTPException(status_code=400, detail='start must be within two years of today')
     else:
         start_date = _campus_today()
     try:
