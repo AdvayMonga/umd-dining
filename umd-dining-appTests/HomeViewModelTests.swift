@@ -101,6 +101,37 @@ struct MealPeriodReconciliationTests {
         #expect(vm.selectedMealPeriod == "Lunch")   // nothing better to offer
     }
 
+    /// Regression for the jumpy hall swipe: the meal must be valid in the same mutation that changes
+    /// the hall. One render with an empty feed swapped the scroll view (and the paged hall card inside
+    /// it) for the empty state, cutting the swipe animation short.
+    @Test func swipingHallsNeverRendersAnEmptyFeedInBetween() {
+        let vm = HomeViewModel(selectedHallId: "51")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "19", meal: "Brunch"),     // Tue Oct 13: Yahentamitsi, Brunch only
+            menuItem(recNum: "2", hall: "51", meal: "Breakfast"),
+            menuItem(recNum: "3", hall: "51", meal: "Lunch"),
+            menuItem(recNum: "4", hall: "51", meal: "Dinner"),
+        ]
+        vm.selectedMealPeriod = "Dinner"
+
+        vm.selectedHallId = "19"   // no explicit reconcile — the swipe alone must keep the feed valid
+        #expect(vm.selectedMealPeriod == "Brunch")
+        #expect(!vm.displayRows.isEmpty)
+
+        vm.selectedHallId = "51"
+        #expect(vm.availableMealPeriods.contains(vm.selectedMealPeriod))
+        #expect(!vm.displayRows.isEmpty)
+    }
+
+    @Test func alternateHallSkipsTheClosedOne() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [menuItem(recNum: "1", hall: "16", meal: "Lunch")]
+        #expect(vm.availableMealPeriods.isEmpty)
+        #expect(vm.alternateHallWithMenu == "16")
+    }
+
     @Test func weekendBrunchIsChosenOverExcludedWeekdayPeriods() {
         let vm = HomeViewModel(selectedHallId: "19")
         vm.selectedDate = weekend

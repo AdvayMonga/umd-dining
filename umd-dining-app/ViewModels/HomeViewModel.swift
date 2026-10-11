@@ -28,7 +28,11 @@ class HomeViewModel {
         }
         return .now
     }()
-    var selectedHallId: String
+    var selectedHallId: String {
+        // Reconcile in the same mutation. Waiting for loadMenus() left one render with a meal the new
+        // hall doesn't serve — an empty feed, which tore down the paged hall card mid-swipe.
+        didSet { if selectedHallId != oldValue { reconcileMealPeriod() } }
+    }
 
     let diningHallNames: [String: String] = [
         "19": "Yahentamitsi",
@@ -53,6 +57,9 @@ class HomeViewModel {
     var filterAllergens: Set<String> = []
 
     var showDiscovery: Bool = false
+
+    // Network loads in flight — an empty menu isn't "closed" until they finish
+    private var inFlightLoads = 0
 
     // Cache: skip network call if same date + filters already loaded
     private var lastLoadedKey: String?
@@ -174,6 +181,33 @@ class HomeViewModel {
         return rows
     }
 
+    var hasActiveFilters: Bool {
+        filterVegetarian || filterVegan || filterHalal || filterGlutenFree
+            || filterDairyFree || filterHighProtein || !filterAllergens.isEmpty
+    }
+
+    var menuState: HomeMenuState {
+        HomeMenuState.resolve(
+            isLoading: isLoading,
+            // Before the first load lands, an empty feed means "not fetched yet", not "closed"
+            isFetching: inFlightLoads > 0 || lastLoadedKey == nil,
+            errorMessage: errorMessage,
+            hasRows: !displayRows.isEmpty,
+            hallMeals: availableMealPeriods,
+            anyHallHasItems: !allItems.isEmpty,
+            selectedMeal: selectedMealPeriod,
+            filtersActive: hasActiveFilters,
+            schedule: DiningHallSchedule.all[selectedHallId],
+            date: selectedDate
+        )
+    }
+
+    /// Another hall with a menu for the selected day, for the empty state's "See …" button
+    var alternateHallWithMenu: String? {
+        let halls = Set(allItems.map(\.diningHallId))
+        return allHallIds.first { $0 != selectedHallId && halls.contains($0) }
+    }
+
     func diningHallName(for id: String) -> String {
         diningHallNames[id] ?? "Unknown"
     }
@@ -257,6 +291,8 @@ class HomeViewModel {
 
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
+        inFlightLoads += 1
+        defer { inFlightLoads -= 1 }
         showDiscovery = false
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
