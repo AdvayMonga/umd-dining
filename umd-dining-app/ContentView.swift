@@ -35,6 +35,9 @@ struct ContentView: View {
                 HomeView(tabResetID: $tabResetID, initialHallId: initialHallId)
                     .tag(0)
 
+                MarketView(tabResetID: $tabResetID)
+                    .tag(3)
+
                 TrackerView(tabResetID: $tabResetID)
                     .tag(1)
 
@@ -105,6 +108,8 @@ struct CustomTabBar: View {
             Divider()
             HStack(spacing: 0) {
                 TabBarItem(icon: "house", tag: 0, selectedTab: $selectedTab)
+                // Market sits second but keeps tag 3 so existing tab indices don't shift
+                TabBarItem(icon: "bag", tag: 3, selectedTab: $selectedTab)
                 TabBarItem(icon: "chart.bar", tag: 1, selectedTab: $selectedTab)
                 TabBarItem(icon: "person", tag: 2, selectedTab: $selectedTab)
             }
