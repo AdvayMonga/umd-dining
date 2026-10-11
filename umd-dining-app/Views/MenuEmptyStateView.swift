@@ -20,6 +20,7 @@ struct MenuEmptyStateView: View {
         switch state {
         case .hallNotServing(false), .noMenusPosted(false): return "moon.zzz"
         case .hallNotServing(true), .noMenusPosted(true): return "line.3.horizontal.decrease.circle"
+        case .sidesOnly: return "cup.and.saucer"
         default: return "clock"
         }
     }

@@ -60,6 +60,8 @@ class HomeViewModel {
 
     // Network loads in flight — an empty menu isn't "closed" until they finish
     private var inFlightLoads = 0
+    // Before any load has finished, an empty feed means "not fetched yet", not "closed"
+    private var hasFinishedLoad = false
 
     // Cache: skip network call if same date + filters already loaded
     private var lastLoadedKey: String?
@@ -89,13 +91,18 @@ class HomeViewModel {
     private var loadedFavStations: Set<String> = []
 
     var availableMealPeriods: [String] {
-        let hallItems = allItems.filter { $0.diningHallId == selectedHallId }
-        let available = Set(hallItems.map(\.mealPeriod))
+        availableMealPeriods(forHall: selectedHallId)
+    }
+
+    func availableMealPeriods(forHall hallId: String) -> [String] {
+        let available = Set(allItems.filter { $0.diningHallId == hallId }.map(\.mealPeriod))
         let weekday = Calendar.current.component(.weekday, from: selectedDate)
-        let isWeekend = weekday == 1 || weekday == 7
+        // Weekend Brunch stands in for Breakfast and Lunch, but only where a hall posts one —
+        // halls that serve Breakfast/Lunch on weekends (251 North) must keep those tabs
+        let brunchReplacesMeals = (weekday == 1 || weekday == 7) && available.contains("Brunch")
         return mealPeriods.filter { period in
             available.contains(period)
-            && !(isWeekend && (period == "Breakfast" || period == "Lunch"))
+            && !(brunchReplacesMeals && (period == "Breakfast" || period == "Lunch"))
         }
     }
 
@@ -181,18 +188,22 @@ class HomeViewModel {
         return rows
     }
 
-    var hasActiveFilters: Bool {
-        filterVegetarian || filterVegan || filterHalal || filterGlutenFree
-            || filterDairyFree || filterHighProtein || !filterAllergens.isEmpty
+    var activeFilterCount: Int {
+        [filterVegetarian, filterVegan, filterHalal, filterGlutenFree, filterDairyFree, filterHighProtein]
+            .filter { $0 }.count + filterAllergens.count
     }
 
-    var menuState: HomeMenuState {
+    var hasActiveFilters: Bool { activeFilterCount > 0 }
+
+    var menuState: HomeMenuState { menuState(rows: displayRows) }
+
+    /// Takes rows the caller already built, so a render computes `displayRows` once
+    func menuState(rows: [FeedRow]) -> HomeMenuState {
         HomeMenuState.resolve(
             isLoading: isLoading,
-            // Before the first load lands, an empty feed means "not fetched yet", not "closed"
-            isFetching: inFlightLoads > 0 || lastLoadedKey == nil,
+            isFetching: inFlightLoads > 0 || !hasFinishedLoad,
             errorMessage: errorMessage,
-            hasRows: !displayRows.isEmpty,
+            hasRows: !rows.isEmpty,
             hallMeals: availableMealPeriods,
             anyHallHasItems: !allItems.isEmpty,
             selectedMeal: selectedMealPeriod,
@@ -202,10 +213,16 @@ class HomeViewModel {
         )
     }
 
-    /// Another hall with a menu for the selected day, for the empty state's "See …" button
+    /// Another hall with a menu for the selected day, for the empty state's "See …" button.
+    /// Only halls whose selectable meals include a dish the feed shows (not just sides).
     var alternateHallWithMenu: String? {
-        let halls = Set(allItems.map(\.diningHallId))
-        return allHallIds.first { $0 != selectedHallId && halls.contains($0) }
+        allHallIds.first { hallId in
+            guard hallId != selectedHallId else { return false }
+            let meals = Set(availableMealPeriods(forHall: hallId))
+            return allItems.contains {
+                $0.diningHallId == hallId && meals.contains($0.mealPeriod) && !isSideStation($0.station)
+            }
+        }
     }
 
     func diningHallName(for id: String) -> String {
@@ -275,6 +292,8 @@ class HomeViewModel {
             filterAllergens = prefs.allergens
             hasLoadedPrefs = true
         }
+        // However this ends (cache hit, success, error or cancellation), an empty feed is now settled
+        defer { hasFinishedLoad = true }
 
         // Try disk cache first (instant app launch)
         if allItems.isEmpty {

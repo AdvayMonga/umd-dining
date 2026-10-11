@@ -80,6 +80,11 @@ struct HomeMenuStateDecisionTests {
         let state = resolve(hallMeals: ["Brunch"], selectedMeal: "Dinner")
         #expect(state == .mealNotServed(meal: "Dinner", nextMeal: "Brunch", nextOpens: nil))
     }
+
+    /// The meal has items but the feed hides them all (drinks, sauces) — not "no dinner"
+    @Test func selectedMealWithNoShownRowsIsSidesOnly() {
+        #expect(resolve(hallMeals: ["Lunch", "Dinner"], selectedMeal: "Dinner") == .sidesOnly(meal: "Dinner"))
+    }
 }
 
 struct HomeMenuStateCopyTests {
@@ -107,6 +112,12 @@ struct HomeMenuStateCopyTests {
         let copy = HomeMenuState.hallNotServing(filtered: false)
             .copy(hallName: "Yahentamitsi", date: day(10, 11), now: now, closedReason: "Closed for fall break")
         #expect(copy.message == "Closed for fall break")
+    }
+
+    @Test func sidesOnlyCopyDoesNotContradictTheSelectedTab() {
+        let copy = HomeMenuState.sidesOnly(meal: "Dinner").copy(hallName: "Yahentamitsi", date: day(10, 11), now: now)
+        #expect(copy.title == "Only sides for dinner today")
+        #expect(!copy.title.contains("No dinner"))
     }
 
     @Test func filteredCopyDoesNotClaimTheHallIsClosed() {

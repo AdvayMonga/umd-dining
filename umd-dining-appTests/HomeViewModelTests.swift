@@ -35,7 +35,7 @@ private let weekday: Date = {
     return Calendar.current.date(from: c)!
 }()
 
-/// A Saturday — availableMealPeriods drops Breakfast and Lunch.
+/// A Saturday — a hall that posts Brunch drops Breakfast and Lunch.
 private let weekend: Date = {
     var c = DateComponents(); c.year = 2026; c.month = 9; c.day = 5
     return Calendar.current.date(from: c)!
@@ -132,6 +132,24 @@ struct MealPeriodReconciliationTests {
         #expect(vm.alternateHallWithMenu == "16")
     }
 
+    /// Offering a hall that would land on an empty feed just moves the dead end
+    @Test func alternateHallSkipsOneWithOnlySides() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "51", meal: "Lunch", station: "Beverages"),
+            menuItem(recNum: "2", hall: "16", meal: "Lunch"),
+        ]
+        #expect(vm.alternateHallWithMenu == "16")
+    }
+
+    @Test func alternateHallIsOfferedForAWeekendLunchOnlyMenu() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekend
+        vm.allItems = [menuItem(recNum: "1", hall: "51", meal: "Lunch", date: "9/5/2026")]
+        #expect(vm.alternateHallWithMenu == "51")
+    }
+
     @Test func weekendBrunchIsChosenOverExcludedWeekdayPeriods() {
         let vm = HomeViewModel(selectedHallId: "19")
         vm.selectedDate = weekend
@@ -168,6 +186,29 @@ struct AvailableMealPeriodsTests {
             menuItem(recNum: "4", hall: "19", meal: "Dinner", date: "9/5/2026"),
         ]
         #expect(vm.availableMealPeriods == ["Brunch", "Dinner"])
+    }
+
+    /// 251 North serves Breakfast and Lunch on weekends — a Lunch-only Saturday must not read as closed
+    @Test func weekendWithoutBrunchKeepsBreakfastAndLunch() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekend
+        vm.allItems = [menuItem(recNum: "1", hall: "19", meal: "Lunch", date: "9/5/2026")]
+        vm.selectedMealPeriod = "Dinner"
+        vm.reconcileMealPeriod()
+        #expect(vm.availableMealPeriods == ["Lunch"])
+        #expect(vm.selectedMealPeriod == "Lunch")
+        #expect(!vm.displayRows.isEmpty)
+    }
+
+    @Test func weekendBreakfastLunchDinnerHallKeepsAllThree() {
+        let vm = HomeViewModel(selectedHallId: "51")
+        vm.selectedDate = weekend
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "51", meal: "Breakfast", date: "9/5/2026"),
+            menuItem(recNum: "2", hall: "51", meal: "Lunch", date: "9/5/2026"),
+            menuItem(recNum: "3", hall: "51", meal: "Dinner", date: "9/5/2026"),
+        ]
+        #expect(vm.availableMealPeriods == ["Breakfast", "Lunch", "Dinner"])
     }
 
     @Test func orderFollowsTheDaysProgression() {
@@ -218,6 +259,43 @@ struct FeedFilteringTests {
             return nil
         }
         #expect(headers.contains("Grill"))
+    }
+}
+
+/// Runs a load that's cancelled before it can fetch — the outcome of a superseded pull-to-refresh
+@MainActor
+private func cancelledReload(_ vm: HomeViewModel) async {
+    let task = Task { await vm.forceReloadMenus() }
+    task.cancel()
+    await task.value
+}
+
+@MainActor
+struct MenuStateTests {
+
+    /// Regression: a cancelled refresh used to leave the feed on "Loading menus..." forever
+    @Test func cancelledLoadDoesNotSpinForever() async {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [menuItem(recNum: "1", hall: "51", meal: "Lunch")]
+        #expect(vm.menuState == .loading, "before any load finishes, empty means not fetched yet")
+        await cancelledReload(vm)
+        #expect(vm.menuState != .loading)
+    }
+
+    /// Dinner is a real tab here, so the empty state mustn't say there's no dinner
+    @Test func mealWithOnlySideStationsSaysSo() async {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "19", meal: "Lunch"),
+            menuItem(recNum: "2", hall: "19", meal: "Dinner", station: "Beverages"),
+        ]
+        vm.selectedMealPeriod = "Dinner"
+        await cancelledReload(vm)
+        #expect(vm.availableMealPeriods.contains("Dinner"))
+        #expect(vm.displayRows.isEmpty)
+        #expect(vm.menuState == .sidesOnly(meal: "Dinner"))
     }
 }
 

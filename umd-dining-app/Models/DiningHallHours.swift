@@ -46,12 +46,17 @@ struct DiningHallSchedule {
         static let closed = Status(isOpen: false, isClosingSoon: false, currentMeal: nil, closeTime: nil, dayCloseTime: nil, nextMeal: nil, nextOpenTime: nil)
     }
 
+    /// The usual meal windows for the given date's weekday
+    func windows(on date: Date, calendar: Calendar = .current) -> [MealWindow] {
+        let weekday = calendar.component(.weekday, from: date)  // 1=Sun, 6=Fri, 7=Sat
+        if weekday == 1 || weekday == 7 { return weekendWindows }
+        if weekday == 6 { return fridayWindows ?? weekdayWindows }
+        return weekdayWindows
+    }
+
     func currentStatus(at date: Date = .now) -> Status {
         let cal = Calendar.current
-        let weekday = cal.component(.weekday, from: date)  // 1=Sun, 6=Fri, 7=Sat
-        let isWeekend = weekday == 1 || weekday == 7
-        let isFriday = weekday == 6
-        let windows = isWeekend ? weekendWindows : (isFriday ? (fridayWindows ?? weekdayWindows) : weekdayWindows)
+        let windows = self.windows(on: date, calendar: cal)
         let h = cal.component(.hour, from: date)
         let m = cal.component(.minute, from: date)
         let minute = h * 60 + m

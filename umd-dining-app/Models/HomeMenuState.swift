@@ -11,6 +11,8 @@ enum HomeMenuState: Equatable {
     case noMenusPosted(filtered: Bool)
     /// The hall serves other meals that day, just not this one
     case mealNotServed(meal: String, nextMeal: String?, nextOpens: String?)
+    /// The meal is posted, but only drinks and sides — the feed hides those stations
+    case sidesOnly(meal: String)
 
     private static let mealOrder = ["Breakfast", "Brunch", "Lunch", "Dinner"]
 
@@ -34,6 +36,8 @@ enum HomeMenuState: Equatable {
         guard !hallMeals.isEmpty else {
             return anyHallHasItems ? .hallNotServing(filtered: filtersActive) : .noMenusPosted(filtered: filtersActive)
         }
+        // The selected meal has items, they just aren't shown — don't claim it isn't served
+        if hallMeals.contains(selectedMeal) { return .sidesOnly(meal: selectedMeal) }
         // Prefer the next meal of the day; fall back to an earlier one
         let selectedIndex = mealOrder.firstIndex(of: selectedMeal) ?? -1
         let others = hallMeals.filter { $0 != selectedMeal }
@@ -74,18 +78,11 @@ enum HomeMenuState: Equatable {
             guard let next else { return (title, "No menu is posted for this meal.") }
             if let opens { return (title, "\(next) starts at \(opens).") }
             return (title, "\(next) is on the menu.")
+        case .sidesOnly(let meal):
+            return ("Only sides for \(meal.lowercased()) \(day)",
+                    "Just drinks and sides are posted for \(meal.lowercased()) so far.")
         case .loading, .error, .menu:
             return ("", "")
         }
-    }
-}
-
-extension DiningHallSchedule {
-    /// The usual meal windows for the given date's weekday
-    func windows(on date: Date, calendar: Calendar = .current) -> [MealWindow] {
-        let weekday = calendar.component(.weekday, from: date)  // 1=Sun, 6=Fri, 7=Sat
-        if weekday == 1 || weekday == 7 { return weekendWindows }
-        if weekday == 6 { return fridayWindows ?? weekdayWindows }
-        return weekdayWindows
     }
 }

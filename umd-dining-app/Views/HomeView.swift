@@ -16,7 +16,7 @@ struct HomeView: View {
     @State private var showFilter = false
     @State private var selectedItem: MenuItem?
     @State private var selectedStation: StationNavData?
-    // Bumped by meal-tab taps only, so a hall swipe that changes the meal doesn't yank the feed to the top
+    // Bumped by meal-tab taps and date changes only, so a hall swipe that changes the meal doesn't yank the feed to the top
     @State private var feedScrollRequest = 0
     @Namespace private var namespace
     @Namespace private var mealPickerNS
@@ -27,16 +27,6 @@ struct HomeView: View {
     init(tabResetID: Binding<UUID>, initialHallId: String) {
         self._tabResetID = tabResetID
         self._viewModel = State(initialValue: HomeViewModel(selectedHallId: initialHallId))
-    }
-
-    private var activeFilterCount: Int {
-        (viewModel.filterVegan ? 1 : 0) +
-        (viewModel.filterVegetarian ? 1 : 0) +
-        (viewModel.filterHalal ? 1 : 0) +
-        (viewModel.filterGlutenFree ? 1 : 0) +
-        (viewModel.filterDairyFree ? 1 : 0) +
-        (viewModel.filterHighProtein ? 1 : 0) +
-        viewModel.filterAllergens.count
     }
 
     var body: some View {
@@ -69,6 +59,7 @@ struct HomeView: View {
                     await viewModel.loadMenus()
                 }
                 .onChange(of: viewModel.selectedDate) {
+                    feedScrollRequest += 1
                     Task { await viewModel.loadMenus() }
                 }
             }
@@ -131,7 +122,7 @@ struct HomeView: View {
                     .foregroundStyle(Color.umdRed)
                     .frame(width: 36, height: 36)
                     .overlay(alignment: .topTrailing) {
-                        if activeFilterCount > 0 {
+                        if viewModel.hasActiveFilters {
                             Circle()
                                 .fill(Color.umdRed)
                                 .frame(width: 8, height: 8)
@@ -140,7 +131,7 @@ struct HomeView: View {
                     }
             }
             .buttonStyle(.plain)
-            .animation(.easeInOut(duration: 0.2), value: activeFilterCount)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.activeFilterCount)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.3)) { showSearch = true }
@@ -410,7 +401,8 @@ struct HomeView: View {
 
     @ViewBuilder
     private var feedBody: some View {
-        let state = viewModel.menuState
+        let rows = viewModel.displayRows
+        let state = viewModel.menuState(rows: rows)
         switch state {
         case .loading:
             ProgressView("Loading menus...")
@@ -426,8 +418,8 @@ struct HomeView: View {
             }
             .padding(.top, 16)
         case .menu:
-            menuList
-        case .hallNotServing, .noMenusPosted, .mealNotServed:
+            menuList(rows)
+        case .hallNotServing, .noMenusPosted, .mealNotServed, .sidesOnly:
             MenuEmptyStateView(
                 state: state,
                 hallName: viewModel.diningHallName(for: viewModel.selectedHallId),
@@ -440,7 +432,7 @@ struct HomeView: View {
         }
     }
 
-    /// The quickest way out of an empty state: another meal, another hall, or back to today
+    /// The quickest way out of an empty state: another meal or another hall
     private func emptyStateAction(for state: HomeMenuState) -> MenuEmptyStateView.Action? {
         switch state {
         case .mealNotServed(_, let next?, _):
@@ -452,16 +444,14 @@ struct HomeView: View {
             return .init(title: "See \(viewModel.diningHallName(for: hallId))") {
                 withAnimation { viewModel.selectedHallId = hallId }
             }
-        case .noMenusPosted where !Calendar.current.isDateInToday(viewModel.selectedDate):
-            return .init(title: "Back to Today") { viewModel.selectedDate = calendarAnchor }
         default:
             return nil
         }
     }
 
-    private var menuList: some View {
+    private func menuList(_ rows: [FeedRow]) -> some View {
         LazyVStack(spacing: 12) {
-            ForEach(viewModel.displayRows) { row in
+            ForEach(rows) { row in
                 switch row {
                 case .stationHeader(let station, let hallId, _):
                     StationHeaderRow(
