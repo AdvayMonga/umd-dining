@@ -35,7 +35,7 @@ private let weekday: Date = {
     return Calendar.current.date(from: c)!
 }()
 
-/// A Saturday — availableMealPeriods drops Breakfast and Lunch.
+/// A Saturday — a hall that posts Brunch drops Breakfast and Lunch.
 private let weekend: Date = {
     var c = DateComponents(); c.year = 2026; c.month = 9; c.day = 5
     return Calendar.current.date(from: c)!
@@ -101,6 +101,55 @@ struct MealPeriodReconciliationTests {
         #expect(vm.selectedMealPeriod == "Lunch")   // nothing better to offer
     }
 
+    /// Regression for the jumpy hall swipe: the meal must be valid in the same mutation that changes
+    /// the hall. One render with an empty feed swapped the scroll view (and the paged hall card inside
+    /// it) for the empty state, cutting the swipe animation short.
+    @Test func swipingHallsNeverRendersAnEmptyFeedInBetween() {
+        let vm = HomeViewModel(selectedHallId: "51")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "19", meal: "Brunch"),     // Tue Oct 13: Yahentamitsi, Brunch only
+            menuItem(recNum: "2", hall: "51", meal: "Breakfast"),
+            menuItem(recNum: "3", hall: "51", meal: "Lunch"),
+            menuItem(recNum: "4", hall: "51", meal: "Dinner"),
+        ]
+        vm.selectedMealPeriod = "Dinner"
+
+        vm.selectedHallId = "19"   // no explicit reconcile — the swipe alone must keep the feed valid
+        #expect(vm.selectedMealPeriod == "Brunch")
+        #expect(!vm.displayRows.isEmpty)
+
+        vm.selectedHallId = "51"
+        #expect(vm.availableMealPeriods.contains(vm.selectedMealPeriod))
+        #expect(!vm.displayRows.isEmpty)
+    }
+
+    @Test func alternateHallSkipsTheClosedOne() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [menuItem(recNum: "1", hall: "16", meal: "Lunch")]
+        #expect(vm.availableMealPeriods.isEmpty)
+        #expect(vm.alternateHallWithMenu == "16")
+    }
+
+    /// Offering a hall that would land on an empty feed just moves the dead end
+    @Test func alternateHallSkipsOneWithOnlySides() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "51", meal: "Lunch", station: "Beverages"),
+            menuItem(recNum: "2", hall: "16", meal: "Lunch"),
+        ]
+        #expect(vm.alternateHallWithMenu == "16")
+    }
+
+    @Test func alternateHallIsOfferedForAWeekendLunchOnlyMenu() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekend
+        vm.allItems = [menuItem(recNum: "1", hall: "51", meal: "Lunch", date: "9/5/2026")]
+        #expect(vm.alternateHallWithMenu == "51")
+    }
+
     @Test func weekendBrunchIsChosenOverExcludedWeekdayPeriods() {
         let vm = HomeViewModel(selectedHallId: "19")
         vm.selectedDate = weekend
@@ -137,6 +186,29 @@ struct AvailableMealPeriodsTests {
             menuItem(recNum: "4", hall: "19", meal: "Dinner", date: "9/5/2026"),
         ]
         #expect(vm.availableMealPeriods == ["Brunch", "Dinner"])
+    }
+
+    /// 251 North serves Breakfast and Lunch on weekends — a Lunch-only Saturday must not read as closed
+    @Test func weekendWithoutBrunchKeepsBreakfastAndLunch() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekend
+        vm.allItems = [menuItem(recNum: "1", hall: "19", meal: "Lunch", date: "9/5/2026")]
+        vm.selectedMealPeriod = "Dinner"
+        vm.reconcileMealPeriod()
+        #expect(vm.availableMealPeriods == ["Lunch"])
+        #expect(vm.selectedMealPeriod == "Lunch")
+        #expect(!vm.displayRows.isEmpty)
+    }
+
+    @Test func weekendBreakfastLunchDinnerHallKeepsAllThree() {
+        let vm = HomeViewModel(selectedHallId: "51")
+        vm.selectedDate = weekend
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "51", meal: "Breakfast", date: "9/5/2026"),
+            menuItem(recNum: "2", hall: "51", meal: "Lunch", date: "9/5/2026"),
+            menuItem(recNum: "3", hall: "51", meal: "Dinner", date: "9/5/2026"),
+        ]
+        #expect(vm.availableMealPeriods == ["Breakfast", "Lunch", "Dinner"])
     }
 
     @Test func orderFollowsTheDaysProgression() {
@@ -187,6 +259,132 @@ struct FeedFilteringTests {
             return nil
         }
         #expect(headers.contains("Grill"))
+    }
+}
+
+/// Runs a load that's cancelled before it can fetch — the outcome of a superseded pull-to-refresh
+@MainActor
+private func cancelledReload(_ vm: HomeViewModel) async {
+    let task = Task { await vm.forceReloadMenus() }
+    task.cancel()
+    await task.value
+}
+
+/// A view model whose fetch never touches the network. High protein keeps loads out of the
+/// on-disk feed cache (only default filters are saved), so tests can't leak into each other.
+@MainActor
+private func stubbedViewModel(
+    hall: String = "19",
+    fetch: @escaping (HomeViewModel.MenuRequest) async throws -> [MenuItem] = { _ in
+        try Task.checkCancellation()
+        return []
+    }
+) -> HomeViewModel {
+    let vm = HomeViewModel(selectedHallId: hall)
+    vm.selectedDate = weekday
+    vm.filterHighProtein = true
+    vm.fetchMenu = fetch
+    return vm
+}
+
+@MainActor
+struct MenuStateTests {
+
+    /// Regression: a cancelled refresh used to leave the feed on "Loading menus..." forever.
+    /// It now owes a reload (HomeView runs it) instead of flashing an error a replacement load would clear.
+    @Test func cancelledLoadAsksForAReload() async {
+        let vm = stubbedViewModel { _ in
+            try Task.checkCancellation()
+            return [menuItem(recNum: "1", hall: "51", meal: "Lunch")]
+        }
+        #expect(vm.menuState == .loading, "before any load finishes, empty means not fetched yet")
+        await cancelledReload(vm)
+        #expect(vm.needsReload)
+        #expect(vm.errorMessage == nil)
+        #expect(vm.menuState == .loading)
+
+        await vm.loadMenus()   // what HomeView does when needsReload turns on
+        #expect(!vm.needsReload)
+        if case .hallNotServing = vm.menuState {} else { Issue.record("expected the settled closed state, got \(vm.menuState)") }
+    }
+
+    /// A load cancelled before any items arrived knows nothing about the day — it mustn't call it closed
+    @Test func cancelledBeforeAnyDataIsNotNoMenusPosted() async {
+        let vm = stubbedViewModel()
+        await cancelledReload(vm)
+        #expect(vm.allItems.isEmpty)
+        if case .noMenusPosted = vm.menuState { Issue.record("claimed no menus without loading any") }
+        if case .hallNotServing = vm.menuState { Issue.record("claimed the hall is closed without loading") }
+    }
+
+    /// The filter overlay changes the cache key live without starting a load — no spinner for that
+    @Test func editingFiltersDoesNotShowTheSpinner() async {
+        let vm = stubbedViewModel { _ in [menuItem(recNum: "1", hall: "51", meal: "Lunch")] }
+        await vm.loadMenus()
+        vm.filterVegan.toggle()
+        #expect(vm.menuState != .loading)
+    }
+
+    /// Regression: a slow load for an earlier day finishing last stamped its menu onto the new day
+    @Test func staleResultFromAnEarlierRequestIsDiscarded() async {
+        let (started, startedSignal) = AsyncStream<Void>.makeStream()
+        let (release, releaseSignal) = AsyncStream<Void>.makeStream()
+        let vm = stubbedViewModel { request in
+            if request.date == "9/3/2026" {
+                startedSignal.yield()
+                for await _ in release { break }
+                return [menuItem(recNum: "old", hall: "19", meal: "Lunch", date: "9/3/2026")]
+            }
+            return [menuItem(recNum: "new", hall: "19", meal: "Lunch", date: "9/4/2026")]
+        }
+        let slow = Task { await vm.loadMenus() }
+        for await _ in started { break }
+
+        vm.selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: weekday)!
+        await vm.loadMenus()
+        releaseSignal.yield()
+        await slow.value
+
+        #expect(vm.allItems.map(\.recNum) == ["new"])
+    }
+
+    /// Hall swipes during the first load call loadMenus again for the same key
+    @Test func concurrentLoadsForTheSameKeyFetchOnce() async {
+        var fetches = 0
+        let (release, releaseSignal) = AsyncStream<Void>.makeStream()
+        let vm = stubbedViewModel { _ in
+            fetches += 1
+            for await _ in release { break }
+            return [menuItem(recNum: "1", hall: "19", meal: "Lunch")]
+        }
+        let first = Task { await vm.loadMenus() }
+        await Task.yield()
+        vm.selectedHallId = "51"
+        await vm.loadMenus()
+        releaseSignal.yield()
+        await first.value
+        #expect(fetches == 1)
+        #expect(!vm.allItems.isEmpty)
+    }
+
+    /// Dinner is a real tab here, so the empty state mustn't say there's no dinner
+    @Test func mealWithOnlySideStationsSaysSo() {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        vm.allItems = [
+            menuItem(recNum: "1", hall: "19", meal: "Lunch"),
+            menuItem(recNum: "2", hall: "19", meal: "Dinner", station: "Beverages"),
+        ]
+        vm.selectedMealPeriod = "Dinner"
+        #expect(vm.availableMealPeriods.contains("Dinner"))
+        #expect(vm.displayRows.isEmpty)
+        // Settled-load decision from the view model's own inputs (a real settle needs the network)
+        let state = HomeMenuState.resolve(
+            isLoading: false, isFetching: false, errorMessage: nil,
+            hasRows: !vm.displayRows.isEmpty, hallMeals: vm.availableMealPeriods, anyHallHasItems: true,
+            selectedMeal: vm.selectedMealPeriod, filtersActive: false
+        )
+        #expect(state == .sidesOnly(meal: "Dinner"))
     }
 }
 

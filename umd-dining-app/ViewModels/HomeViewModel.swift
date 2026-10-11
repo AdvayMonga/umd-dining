@@ -28,7 +28,11 @@ class HomeViewModel {
         }
         return .now
     }()
-    var selectedHallId: String
+    var selectedHallId: String {
+        // Reconcile in the same mutation. Waiting for loadMenus() left one render with a meal the new
+        // hall doesn't serve — an empty feed, which tore down the paged hall card mid-swipe.
+        didSet { if selectedHallId != oldValue { reconcileMealPeriod() } }
+    }
 
     let diningHallNames: [String: String] = [
         "19": "Yahentamitsi",
@@ -53,6 +57,30 @@ class HomeViewModel {
     var filterAllergens: Set<String> = []
 
     var showDiscovery: Bool = false
+
+    // Cache keys of network loads in flight — an empty menu isn't "closed" until they finish
+    private var inFlightKeys: Set<String> = []
+    // Cache key `allItems` was actually loaded for. Unlike lastLoadedKey, refreshes don't clear it.
+    private var itemsKey: String?
+    /// A load was cancelled before its items arrived. HomeView reloads when this turns on —
+    /// a cancelled `.task` is often replaced anyway (tab reset), so no error is shown for it.
+    private(set) var needsReload = false
+
+    struct MenuRequest {
+        let date: String
+        let hallIds: [String]
+        let vegetarian, vegan, halal, highProtein: Bool
+        let allergens: Set<String>
+    }
+
+    /// The network fetch, swappable so tests can control timing
+    @ObservationIgnored var fetchMenu: (MenuRequest) async throws -> [MenuItem] = { r in
+        try await DiningAPIService.shared.fetchRankedMenu(
+            date: r.date, diningHallIds: r.hallIds, userId: AuthManager.shared.userId,
+            vegetarian: r.vegetarian, vegan: r.vegan, halal: r.halal,
+            highProtein: r.highProtein, allergens: r.allergens
+        )
+    }
 
     // Cache: skip network call if same date + filters already loaded
     private var lastLoadedKey: String?
@@ -82,13 +110,18 @@ class HomeViewModel {
     private var loadedFavStations: Set<String> = []
 
     var availableMealPeriods: [String] {
-        let hallItems = allItems.filter { $0.diningHallId == selectedHallId }
-        let available = Set(hallItems.map(\.mealPeriod))
+        availableMealPeriods(forHall: selectedHallId)
+    }
+
+    func availableMealPeriods(forHall hallId: String) -> [String] {
+        let available = Set(allItems.filter { $0.diningHallId == hallId }.map(\.mealPeriod))
         let weekday = Calendar.current.component(.weekday, from: selectedDate)
-        let isWeekend = weekday == 1 || weekday == 7
+        // Weekend Brunch stands in for Breakfast and Lunch, but only where a hall posts one —
+        // halls that serve Breakfast/Lunch on weekends (251 North) must keep those tabs
+        let brunchReplacesMeals = (weekday == 1 || weekday == 7) && available.contains("Brunch")
         return mealPeriods.filter { period in
             available.contains(period)
-            && !(isWeekend && (period == "Breakfast" || period == "Lunch"))
+            && !(brunchReplacesMeals && (period == "Breakfast" || period == "Lunch"))
         }
     }
 
@@ -174,6 +207,45 @@ class HomeViewModel {
         return rows
     }
 
+    var activeFilterCount: Int {
+        [filterVegetarian, filterVegan, filterHalal, filterGlutenFree, filterDairyFree, filterHighProtein]
+            .filter { $0 }.count + filterAllergens.count
+    }
+
+    var hasActiveFilters: Bool { activeFilterCount > 0 }
+
+    var menuState: HomeMenuState { menuState(rows: displayRows) }
+
+    /// Takes rows the caller already built, so a render computes `displayRows` once
+    func menuState(rows: [FeedRow]) -> HomeMenuState {
+        HomeMenuState.resolve(
+            isLoading: isLoading,
+            // Only a load that's running (or owed after a cancel) counts. A key changed by the
+            // filter overlay, with no load yet, resolves against the items on hand.
+            isFetching: !inFlightKeys.isEmpty || needsReload || itemsKey == nil,
+            errorMessage: errorMessage,
+            hasRows: !rows.isEmpty,
+            hallMeals: availableMealPeriods,
+            anyHallHasItems: !allItems.isEmpty,
+            selectedMeal: selectedMealPeriod,
+            filtersActive: hasActiveFilters,
+            schedule: DiningHallSchedule.all[selectedHallId],
+            date: selectedDate
+        )
+    }
+
+    /// Another hall with a menu for the selected day, for the empty state's "See …" button.
+    /// Only halls whose selectable meals include a dish the feed shows (not just sides).
+    var alternateHallWithMenu: String? {
+        allHallIds.first { hallId in
+            guard hallId != selectedHallId else { return false }
+            let meals = Set(availableMealPeriods(forHall: hallId))
+            return allItems.contains {
+                $0.diningHallId == hallId && meals.contains($0.mealPeriod) && !isSideStation($0.station)
+            }
+        }
+    }
+
     func diningHallName(for id: String) -> String {
         diningHallNames[id] ?? "Unknown"
     }
@@ -221,10 +293,10 @@ class HomeViewModel {
         lastLoadedKey = keyId
     }
 
-    private func saveToDisk() {
+    private func saveToDisk(key: String) {
         guard let data = try? JSONEncoder().encode(allItems) else { return }
         UserDefaults.standard.set(data, forKey: Self.feedCacheKey)
-        UserDefaults.standard.set(currentCacheKey, forKey: Self.feedCacheKeyId)
+        UserDefaults.standard.set(key, forKey: Self.feedCacheKeyId)
     }
 
     func loadMenus() async {
@@ -251,12 +323,31 @@ class HomeViewModel {
         // every hall, so switching halls lands here — the selected meal period
         // still has to be re-checked against the new hall's offerings.
         guard lastLoadedKey != currentCacheKey else {
+            itemsKey = lastLoadedKey
+            needsReload = false
             reconcileMealPeriod()
             return
         }
 
+        // Capture the request before awaiting: date and filters can change while it's in flight
+        let requestKey = currentCacheKey
+        // Hall swipes during a load would otherwise fetch the same menu again
+        guard !inFlightKeys.contains(requestKey) else { return }
+        var effectiveAllergens = filterAllergens
+        if filterGlutenFree { effectiveAllergens.insert("Contains gluten") }
+        if filterDairyFree { effectiveAllergens.insert("Contains dairy") }
+        let request = MenuRequest(
+            date: dateString, hallIds: allHallIds,
+            vegetarian: filterVegetarian, vegan: filterVegan, halal: filterHalal,
+            highProtein: filterHighProtein, allergens: effectiveAllergens
+        )
+        let saveAfterLoad = filtersMatchDefaults
+
         isLoading = allItems.isEmpty  // Only show spinner if no cached data
         errorMessage = nil
+        needsReload = false
+        inFlightKeys.insert(requestKey)
+        defer { inFlightKeys.remove(requestKey) }
         showDiscovery = false
 
         // Snapshot favorites at load time so feed order stays stable until next refresh
@@ -264,29 +355,21 @@ class HomeViewModel {
         loadedFavStations = FavoritesManager.shared.favoriteStations
 
         do {
-            let userId = await AuthManager.shared.userId
-            var effectiveAllergens = filterAllergens
-            if filterGlutenFree { effectiveAllergens.insert("Contains gluten") }
-            if filterDairyFree { effectiveAllergens.insert("Contains dairy") }
-            allItems = try await DiningAPIService.shared.fetchRankedMenu(
-                date: dateString,
-                diningHallIds: allHallIds,
-                userId: userId,
-                vegetarian: filterVegetarian,
-                vegan: filterVegan,
-                halal: filterHalal,
-                highProtein: filterHighProtein,
-                allergens: effectiveAllergens
-            )
-            lastLoadedKey = currentCacheKey
-            if filtersMatchDefaults {
-                saveToDisk()
+            let items = try await fetchMenu(request)
+            // A newer date or filter set took over while this was in flight; its own load applies
+            guard requestKey == currentCacheKey else { isLoading = false; return }
+            allItems = items
+            lastLoadedKey = requestKey
+            itemsKey = requestKey
+            if saveAfterLoad {
+                saveToDisk(key: requestKey)
             }
             reconcileMealPeriod()
-        } catch is CancellationError {
-            // Ignore — task was superseded by a new load
         } catch {
-            if !Task.isCancelled {
+            if error is CancellationError || Task.isCancelled {
+                // Owe a reload only if this key's items never arrived and nothing newer replaced it
+                if itemsKey != requestKey && requestKey == currentCacheKey { needsReload = true }
+            } else if requestKey == currentCacheKey {
                 errorMessage = error.localizedDescription
             }
         }

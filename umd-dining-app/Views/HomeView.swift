@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var showFilter = false
     @State private var selectedItem: MenuItem?
     @State private var selectedStation: StationNavData?
+    // Bumped by meal-tab taps and date changes only, so a hall swipe that changes the meal doesn't yank the feed to the top
+    @State private var feedScrollRequest = 0
     @Namespace private var namespace
     @Namespace private var mealPickerNS
 
@@ -25,16 +27,6 @@ struct HomeView: View {
     init(tabResetID: Binding<UUID>, initialHallId: String) {
         self._tabResetID = tabResetID
         self._viewModel = State(initialValue: HomeViewModel(selectedHallId: initialHallId))
-    }
-
-    private var activeFilterCount: Int {
-        (viewModel.filterVegan ? 1 : 0) +
-        (viewModel.filterVegetarian ? 1 : 0) +
-        (viewModel.filterHalal ? 1 : 0) +
-        (viewModel.filterGlutenFree ? 1 : 0) +
-        (viewModel.filterDairyFree ? 1 : 0) +
-        (viewModel.filterHighProtein ? 1 : 0) +
-        viewModel.filterAllergens.count
     }
 
     var body: some View {
@@ -67,7 +59,12 @@ struct HomeView: View {
                     await viewModel.loadMenus()
                 }
                 .onChange(of: viewModel.selectedDate) {
+                    feedScrollRequest += 1
                     Task { await viewModel.loadMenus() }
+                }
+                .onChange(of: viewModel.needsReload) { _, needsReload in
+                    // An unstructured task, so the view teardown that cancelled the last load can't cancel this one
+                    if needsReload { Task { await viewModel.loadMenus() } }
                 }
             }
 
@@ -129,7 +126,7 @@ struct HomeView: View {
                     .foregroundStyle(Color.umdRed)
                     .frame(width: 36, height: 36)
                     .overlay(alignment: .topTrailing) {
-                        if activeFilterCount > 0 {
+                        if viewModel.hasActiveFilters {
                             Circle()
                                 .fill(Color.umdRed)
                                 .frame(width: 8, height: 8)
@@ -138,7 +135,7 @@ struct HomeView: View {
                     }
             }
             .buttonStyle(.plain)
-            .animation(.easeInOut(duration: 0.2), value: activeFilterCount)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.activeFilterCount)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.3)) { showSearch = true }
@@ -221,6 +218,7 @@ struct HomeView: View {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         viewModel.selectedMealPeriod = period
                     }
+                    feedScrollRequest += 1
                 } label: {
                     VStack(spacing: 0) {
                         Text(period)
@@ -242,6 +240,14 @@ struct HomeView: View {
                     }
                 }
                 .buttonStyle(.plain)
+            }
+            // A closed hall has no tabs; hold the row's height so the feed below doesn't shift
+            if viewModel.availableMealPeriods.isEmpty {
+                Text("Lunch")
+                    .font(.subheadline)
+                    .padding(.vertical, 10)
+                    .padding(.bottom, 2)
+                    .hidden()
             }
         }
         .background(alignment: .bottom) {
@@ -378,14 +384,35 @@ struct HomeView: View {
 
     // MARK: - Content
 
-    @ViewBuilder
+    // The scroll view and hall card stay mounted in every state: swapping them out for an
+    // empty/loading view rebuilt the paged TabView and cut the swipe animation short.
     private var content: some View {
-        if viewModel.isLoading {
-            Spacer()
+        ScrollViewReader { proxy in
+            ScrollView {
+                Color.clear.frame(height: 0).id("feedTop")
+                hallCard
+                feedBody
+            }
+            .refreshable { await viewModel.forceReloadMenus() }
+            .onChange(of: feedScrollRequest) {
+                // Scroll instantly (no animation) so it doesn't fight the content transition
+                var t = Transaction()
+                t.disablesAnimations = true
+                withTransaction(t) { proxy.scrollTo("feedTop", anchor: .top) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var feedBody: some View {
+        let rows = viewModel.displayRows
+        let state = viewModel.menuState(rows: rows)
+        switch state {
+        case .loading:
             ProgressView("Loading menus...")
-            Spacer()
-        } else if let error = viewModel.errorMessage {
-            Spacer()
+                .frame(maxWidth: .infinity)
+                .padding(.top, 48)
+        case .error(let error):
             ContentUnavailableView {
                 Label("Error", systemImage: "exclamationmark.triangle")
             } description: {
@@ -393,80 +420,90 @@ struct HomeView: View {
             } actions: {
                 Button("Retry") { Task { await viewModel.loadMenus() } }
             }
-            Spacer()
-        } else if viewModel.displayRows.isEmpty {
-            Spacer()
-            ContentUnavailableView(
-                "No Menu Available",
-                systemImage: "fork.knife",
-                description: Text("Try another date or meal period.")
+            .padding(.top, 16)
+        case .menu:
+            menuList(rows)
+        case .hallNotServing, .noMenusPosted, .mealNotServed, .sidesOnly:
+            MenuEmptyStateView(
+                state: state,
+                hallName: viewModel.diningHallName(for: viewModel.selectedHallId),
+                date: viewModel.selectedDate,
+                action: emptyStateAction(for: state)
             )
-            Spacer()
-        } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    Color.clear.frame(height: 0).id("feedTop")
-                    hallCard
-                    LazyVStack(spacing: 12) {
-                        ForEach(viewModel.displayRows) { row in
-                            switch row {
-                            case .stationHeader(let station, let hallId, _):
-                                StationHeaderRow(
-                                    station: station,
-                                    diningHallName: viewModel.diningHallName(for: hallId),
-                                    diningHallId: hallId,
-                                    items: viewModel.itemsForStation(station: station, hallId: hallId),
-                                    selectedDate: viewModel.selectedDate,
-                                    selectedMealPeriod: viewModel.selectedMealPeriod,
-                                    namespace: namespace,
-                                    onTap: {
-                                        selectedStation = StationNavData(
-                                            station: station,
-                                            diningHallId: hallId,
-                                            diningHallName: viewModel.diningHallName(for: hallId),
-                                            selectedDate: viewModel.selectedDate,
-                                            selectedMealPeriod: viewModel.selectedMealPeriod
-                                        )
-                                    }
-                                )
-                            case .seeMore:
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.25)) { viewModel.showDiscovery = true }
-                                } label: {
-                                    Text("See More Stations")
-                                        .font(.subheadline).fontWeight(.semibold)
-                                        .foregroundStyle(Color.umdRed)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                                        .background(Color(.systemBackground))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
-                                        .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
-                                }
-                                .buttonStyle(.plain)
-                            case .menuItem(let item):
-                                FoodItemRow(
-                                    item: item,
-                                    diningHallName: viewModel.diningHallName(for: item.diningHallId),
-                                    onTap: { selectedItem = item }
-                                )
-                                .matchedTransitionSource(id: item.recNum, in: namespace)
-                            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 90)
+        }
+    }
+
+    /// The quickest way out of an empty state: another meal or another hall
+    private func emptyStateAction(for state: HomeMenuState) -> MenuEmptyStateView.Action? {
+        switch state {
+        case .mealNotServed(_, let next?, _):
+            return .init(title: "Show \(next)") {
+                withAnimation(.easeInOut(duration: 0.2)) { viewModel.selectedMealPeriod = next }
+            }
+        case .hallNotServing:
+            guard let hallId = viewModel.alternateHallWithMenu else { return nil }
+            return .init(title: "See \(viewModel.diningHallName(for: hallId))") {
+                withAnimation { viewModel.selectedHallId = hallId }
+            }
+        default:
+            return nil
+        }
+    }
+
+    private func menuList(_ rows: [FeedRow]) -> some View {
+        LazyVStack(spacing: 12) {
+            ForEach(rows) { row in
+                switch row {
+                case .stationHeader(let station, let hallId, _):
+                    StationHeaderRow(
+                        station: station,
+                        diningHallName: viewModel.diningHallName(for: hallId),
+                        diningHallId: hallId,
+                        items: viewModel.itemsForStation(station: station, hallId: hallId),
+                        selectedDate: viewModel.selectedDate,
+                        selectedMealPeriod: viewModel.selectedMealPeriod,
+                        namespace: namespace,
+                        onTap: {
+                            selectedStation = StationNavData(
+                                station: station,
+                                diningHallId: hallId,
+                                diningHallName: viewModel.diningHallName(for: hallId),
+                                selectedDate: viewModel.selectedDate,
+                                selectedMealPeriod: viewModel.selectedMealPeriod
+                            )
                         }
+                    )
+                case .seeMore:
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { viewModel.showDiscovery = true }
+                    } label: {
+                        Text("See More Stations")
+                            .font(.subheadline).fontWeight(.semibold)
+                            .foregroundStyle(Color.umdRed)
+                            .frame(maxWidth: .infinity).padding(.vertical, 10)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.gray.opacity(0.3), lineWidth: 1))
+                            .shadow(color: .gray.opacity(0.15), radius: 4, x: 0, y: 2)
                     }
-                    .id(viewModel.selectedMealPeriod)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 90)
-                }
-                .refreshable { await viewModel.forceReloadMenus() }
-                .onChange(of: viewModel.selectedMealPeriod) {
-                    // Scroll instantly (no animation) so it doesn't fight the content transition
-                    var t = Transaction()
-                    t.disablesAnimations = true
-                    withTransaction(t) { proxy.scrollTo("feedTop", anchor: .top) }
+                    .buttonStyle(.plain)
+                case .menuItem(let item):
+                    FoodItemRow(
+                        item: item,
+                        diningHallName: viewModel.diningHallName(for: item.diningHallId),
+                        onTap: { selectedItem = item }
+                    )
+                    .matchedTransitionSource(id: item.recNum, in: namespace)
                 }
             }
         }
+        .id(viewModel.selectedMealPeriod)
+        .transition(.opacity.combined(with: .move(edge: .bottom)))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 90)
     }
 }
 
