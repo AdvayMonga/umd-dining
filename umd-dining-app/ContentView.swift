@@ -35,6 +35,9 @@ struct ContentView: View {
                 HomeView(tabResetID: $tabResetID, initialHallId: initialHallId)
                     .tag(0)
 
+                GuestPassView(tabResetID: $tabResetID)
+                    .tag(4)
+
                 TrackerView(tabResetID: $tabResetID)
                     .tag(1)
 
@@ -105,6 +108,8 @@ struct CustomTabBar: View {
             Divider()
             HStack(spacing: 0) {
                 TabBarItem(icon: "house", tag: 0, selectedTab: $selectedTab)
+                // Second in the bar; tag 4 leaves 3 free for the Dining Dollar Market branch
+                TabBarItem(icon: "ticket", tag: 4, selectedTab: $selectedTab)
                 TabBarItem(icon: "chart.bar", tag: 1, selectedTab: $selectedTab)
                 TabBarItem(icon: "person", tag: 2, selectedTab: $selectedTab)
             }
