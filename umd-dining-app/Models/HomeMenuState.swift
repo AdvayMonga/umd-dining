@@ -71,8 +71,9 @@ enum HomeMenuState: Equatable {
             return ("No menus posted \(day)",
                     closedReason ?? "UMD Dining hasn't posted menus for this day yet. Try another day or check the hours.")
         case .noMenusPosted(true):
-            return ("Nothing matches your filters",
-                    closedReason ?? "No dining hall has dishes that fit your filters \(day).")
+            // Filters apply server-side, so an empty answer can't tell "closed" from "filtered out"
+            return ("No menus to show \(day)",
+                    closedReason ?? "Dining halls may be closed, or nothing matches your filters.")
         case .mealNotServed(let meal, let next, let opens):
             let title = "No \(meal.lowercased()) \(day)"
             guard let next else { return (title, "No menu is posted for this meal.") }

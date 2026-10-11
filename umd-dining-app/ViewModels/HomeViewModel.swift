@@ -60,8 +60,9 @@ class HomeViewModel {
 
     // Network loads in flight — an empty menu isn't "closed" until they finish
     private var inFlightLoads = 0
-    // Before any load has finished, an empty feed means "not fetched yet", not "closed"
-    private var hasFinishedLoad = false
+    // Cache key `allItems` was actually loaded for. Until it matches, an empty feed means
+    // "not fetched yet", not "closed". Unlike lastLoadedKey, refreshes don't clear it.
+    private var itemsKey: String?
 
     // Cache: skip network call if same date + filters already loaded
     private var lastLoadedKey: String?
@@ -201,7 +202,7 @@ class HomeViewModel {
     func menuState(rows: [FeedRow]) -> HomeMenuState {
         HomeMenuState.resolve(
             isLoading: isLoading,
-            isFetching: inFlightLoads > 0 || !hasFinishedLoad,
+            isFetching: inFlightLoads > 0 || itemsKey != currentCacheKey,
             errorMessage: errorMessage,
             hasRows: !rows.isEmpty,
             hallMeals: availableMealPeriods,
@@ -292,8 +293,6 @@ class HomeViewModel {
             filterAllergens = prefs.allergens
             hasLoadedPrefs = true
         }
-        // However this ends (cache hit, success, error or cancellation), an empty feed is now settled
-        defer { hasFinishedLoad = true }
 
         // Try disk cache first (instant app launch)
         if allItems.isEmpty {
@@ -304,6 +303,8 @@ class HomeViewModel {
         // every hall, so switching halls lands here — the selected meal period
         // still has to be re-checked against the new hall's offerings.
         guard lastLoadedKey != currentCacheKey else {
+            itemsKey = lastLoadedKey
+            errorMessage = nil  // a cancelled load's message is stale once this key's items are in
             reconcileMealPeriod()
             return
         }
@@ -334,18 +335,28 @@ class HomeViewModel {
                 allergens: effectiveAllergens
             )
             lastLoadedKey = currentCacheKey
+            itemsKey = lastLoadedKey
             if filtersMatchDefaults {
                 saveToDisk()
             }
             reconcileMealPeriod()
         } catch is CancellationError {
-            // Ignore — task was superseded by a new load
+            cancelledWithoutItems()
         } catch {
-            if !Task.isCancelled {
+            if Task.isCancelled {
+                cancelledWithoutItems()
+            } else {
                 errorMessage = error.localizedDescription
             }
         }
         isLoading = false
+    }
+
+    /// A superseding load takes over, but if nothing replaced this one and the day's items never
+    /// arrived, offer Retry — neither an endless spinner nor a "closed" guess is honest
+    private func cancelledWithoutItems() {
+        guard inFlightLoads == 1, itemsKey != currentCacheKey else { return }
+        errorMessage = "Couldn't load menus."
     }
 
     func forceReloadMenus() async {

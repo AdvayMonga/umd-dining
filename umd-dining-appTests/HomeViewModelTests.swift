@@ -273,18 +273,29 @@ private func cancelledReload(_ vm: HomeViewModel) async {
 @MainActor
 struct MenuStateTests {
 
-    /// Regression: a cancelled refresh used to leave the feed on "Loading menus..." forever
+    /// Regression: a cancelled refresh used to leave the feed on "Loading menus..." forever.
+    /// With nothing else in flight it now offers Retry.
     @Test func cancelledLoadDoesNotSpinForever() async {
         let vm = HomeViewModel(selectedHallId: "19")
         vm.selectedDate = weekday
         vm.allItems = [menuItem(recNum: "1", hall: "51", meal: "Lunch")]
         #expect(vm.menuState == .loading, "before any load finishes, empty means not fetched yet")
         await cancelledReload(vm)
-        #expect(vm.menuState != .loading)
+        #expect(vm.menuState == .error("Couldn't load menus."))
+    }
+
+    /// A load cancelled before any items arrived knows nothing about the day — it mustn't call it closed
+    @Test func cancelledBeforeAnyDataIsNotNoMenusPosted() async {
+        let vm = HomeViewModel(selectedHallId: "19")
+        vm.selectedDate = weekday
+        await cancelledReload(vm)
+        #expect(vm.allItems.isEmpty)
+        if case .noMenusPosted = vm.menuState { Issue.record("claimed no menus without loading any") }
+        if case .hallNotServing = vm.menuState { Issue.record("claimed the hall is closed without loading") }
     }
 
     /// Dinner is a real tab here, so the empty state mustn't say there's no dinner
-    @Test func mealWithOnlySideStationsSaysSo() async {
+    @Test func mealWithOnlySideStationsSaysSo() {
         let vm = HomeViewModel(selectedHallId: "19")
         vm.selectedDate = weekday
         vm.allItems = [
@@ -292,10 +303,15 @@ struct MenuStateTests {
             menuItem(recNum: "2", hall: "19", meal: "Dinner", station: "Beverages"),
         ]
         vm.selectedMealPeriod = "Dinner"
-        await cancelledReload(vm)
         #expect(vm.availableMealPeriods.contains("Dinner"))
         #expect(vm.displayRows.isEmpty)
-        #expect(vm.menuState == .sidesOnly(meal: "Dinner"))
+        // Settled-load decision from the view model's own inputs (a real settle needs the network)
+        let state = HomeMenuState.resolve(
+            isLoading: false, isFetching: false, errorMessage: nil,
+            hasRows: !vm.displayRows.isEmpty, hallMeals: vm.availableMealPeriods, anyHallHasItems: true,
+            selectedMeal: vm.selectedMealPeriod, filtersActive: false
+        )
+        #expect(state == .sidesOnly(meal: "Dinner"))
     }
 }
 

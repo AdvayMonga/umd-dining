@@ -125,6 +125,13 @@ struct HomeMenuStateCopyTests {
         #expect(!copy.title.contains("isn't serving"))
         #expect(copy.message.contains("filters"))
     }
+
+    /// Filters apply server-side, so an empty campus could be closed or filtered out — say both
+    @Test func filteredNoMenusCopyCoversClosedAndFiltered() {
+        let copy = HomeMenuState.noMenusPosted(filtered: true).copy(hallName: "251 North", date: day(10, 11), now: now)
+        #expect(copy.title == "No menus to show today")
+        #expect(copy.message == "Dining halls may be closed, or nothing matches your filters.")
+    }
 }
 
 struct ScheduleWindowsTests {
