@@ -71,8 +71,6 @@ struct DiningHallPickerView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             CustomTabBar(selectedTab: tabBinding)
         }
-        // The picker reappears on every foreground, so this keeps hours fresh (throttled hourly)
-        .task { await HallHoursService.shared.refreshIfNeeded() }
     }
 }
 

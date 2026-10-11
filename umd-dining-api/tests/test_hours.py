@@ -9,9 +9,10 @@ import hours
 import routes
 
 
-def gviz(rows):
+def gviz(rows, labels=()):
     """Wrap rows of plain values the way Google's gviz endpoint does."""
-    table = {"cols": [], "rows": [{"c": [None if v is None else {"v": v} for v in r]} for r in rows]}
+    table = {"cols": [{"label": label} for label in labels],
+             "rows": [{"c": [None if v is None else {"v": v} for v in r]} for r in rows]}
     body = json.dumps({"version": "0.6", "status": "ok", "table": table})
     return f"/*O_o*/\ngoogle.visualization.Query.setResponse({body});"
 
@@ -76,7 +77,18 @@ def test_parse_sheet_handles_typed_date_headers():
     assert hours.parse_sheet(sheet) == {"19": {"2026-10-10": [{"meal": "Dinner", "open": "16:00", "close": "21:00"}]}}
 
 
-@pytest.mark.parametrize("text", ["<html>sign in</html>", gviz([]), gviz([["venue", "1/1/2026"], ["Foo | Lunch", "1pm-2pm"]])])
+def test_parse_sheet_falls_back_to_column_labels_for_dates():
+    sheet = gviz([["Yahentamitsi | Dinner", "4pm-9pm"]], labels=["venue", "10/10/2026"])
+    assert hours.parse_sheet(sheet) == {"19": {"2026-10-10": [{"meal": "Dinner", "open": "16:00", "close": "21:00"}]}}
+
+
+@pytest.mark.parametrize("text", [
+    "<html>sign in</html>",
+    gviz([]),
+    gviz([["venue", "1/1/2026"], ["Foo | Lunch", "1pm-2pm"]]),
+    gviz([["venue", "1/1/2026"], ["Yahentamitsi | Lunch", ""], ["251 North | Lunch", "TBD"]]),   # blanked
+    gviz([["venue", "someday"], ["Yahentamitsi | Lunch", "1pm-2pm"]], labels=["", "A"]),         # no dates
+])
 def test_parse_sheet_rejects_unusable_responses(text):
     with pytest.raises(ValueError):
         hours.parse_sheet(text)
@@ -125,6 +137,22 @@ def test_cache_without_a_good_copy_raises():
     cache = hours.HoursCache(fetcher=lambda: "not gviz", clock=Clock())
     with pytest.raises(hours.HoursUnavailable):
         cache.get()
+
+
+def test_cache_keeps_the_good_copy_when_the_sheet_comes_back_blank():
+    clock, calls = Clock(), []
+    blank = gviz([["venue", "10/10/2026"], ["Yahentamitsi | Lunch", None]])
+
+    def fetcher():
+        calls.append(clock.now)
+        return SHEET if len(calls) == 1 else blank
+
+    cache = hours.HoursCache(fetcher=fetcher, clock=clock)
+    good = cache.get()
+    clock.now += hours.REFRESH_SECONDS
+    assert cache.get() == good and len(calls) == 2
+    clock.now += 60
+    assert cache.get() == good and len(calls) == 2                   # backed off, not stored
 
 
 def test_cache_backs_off_after_a_failed_first_fetch():

@@ -133,14 +133,22 @@ def unwrap_gviz(text: str) -> dict:
 def parse_sheet(text: str) -> dict:
     """gviz text -> {hall_id: {date: [windows]}} for every date the sheet knows about."""
     payload = unwrap_gviz(text)
-    rows = (payload.get('table') or {}).get('rows') or []
+    table = payload.get('table') or {}
+    rows = table.get('rows') or []
     if not rows:
         raise ValueError('sheet has no rows')
     header = [_parse_header_date(_cell_value(c)) for c in rows[0].get('c') or []]
+    body = rows[1:]
+    if not any(header):
+        # gviz sometimes promotes the header row into the column labels
+        header = [_parse_header_date((c or {}).get('label')) for c in table.get('cols') or []]
+        body = rows
+    if not any(header):
+        raise ValueError('sheet has no date header')
 
     # {hall_id: {date: [(open, close, meal)], or None once any meal cell that day is unknown}}
     days: dict = {}
-    for row in rows[1:]:
+    for row in body:
         cells = row.get('c') or []
         label = _cell_value(cells[0]) if cells else None
         if not isinstance(label, str) or '|' not in label:
@@ -163,15 +171,17 @@ def parse_sheet(text: str) -> dict:
             if day is not None and window != CLOSED:
                 day.append((window[0], window[1], meal))
 
-    if not days:
-        raise ValueError('sheet has no recognizable hall rows')
-    return {
+    schedule = {
         hall_id: {
             d: [{'meal': meal, 'open': _fmt(o), 'close': _fmt(c)} for o, c, meal in sorted(windows)]
             for d, windows in by_date.items() if windows is not None
         }
         for hall_id, by_date in days.items()
     }
+    # Nothing known anywhere (blanked sheet, unknown halls) is a broken fetch, not a good copy
+    if not any(schedule.values()):
+        raise ValueError('sheet has no known days for any hall')
+    return schedule
 
 
 # ---------------------------------------------------------------------------

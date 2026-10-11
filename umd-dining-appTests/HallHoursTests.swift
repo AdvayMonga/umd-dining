@@ -221,6 +221,19 @@ struct HallHoursServiceTests {
         #expect(calls == 3)
     }
 
+    @Test func aCancelledFetchDoesNotBlockAnImmediateRetry() async throws {
+        let response = try JSONDecoder().decode(HallHoursResponse.self, from: Data(json.utf8))
+        var calls = 0
+        let service = HallHoursService(defaults: freshDefaults(), fetch: {
+            calls += 1
+            if calls == 1 { throw CancellationError() }   // e.g. the view that started it went away
+            return response
+        }, now: { at(10, 11, 12) })
+        await service.refreshIfNeeded()
+        await service.refreshIfNeeded()                   // same instant: not throttled, not in flight
+        #expect(calls == 2 && service.days["19"] != nil)
+    }
+
     @Test func overlappingRefreshesDoNotFetchTwice() async {
         var clock = at(10, 11, 12)
         var calls = 0

@@ -89,11 +89,18 @@ class HallHoursService {
         }
         // Recorded before awaiting, so overlapping calls and failures are throttled too
         isRefreshing = true
+        defer { isRefreshing = false }
+        let previous = (lastAttempt, lastAttemptSucceeded)
         lastAttempt = now()
         lastAttemptSucceeded = false
-        defer { isRefreshing = false }
-        guard let response = try? await fetch() else { return }
-        apply(response)
+        do {
+            apply(try await fetch())
+        } catch {
+            // Cancelled isn't failed: the server wasn't the problem, so the next call may retry at once
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                (lastAttempt, lastAttemptSucceeded) = previous
+            }
+        }
     }
 
     func apply(_ response: HallHoursResponse) {
