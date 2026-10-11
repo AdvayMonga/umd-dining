@@ -62,9 +62,13 @@ def _ensure_string(value, field_name='field'):
     return value
 
 
-def _today_str() -> str:
+def _campus_today():
     # Campus time, not server time: the server runs on UTC, which is already "tomorrow" during dinner
-    return datetime.now(ZoneInfo('America/New_York')).strftime('%-m/%-d/%Y')
+    return datetime.now(ZoneInfo('America/New_York')).date()
+
+
+def _today_str() -> str:
+    return _campus_today().strftime('%-m/%-d/%Y')
 
 
 async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> dict:
@@ -1562,7 +1566,7 @@ async def get_hours(
         except ValueError:
             raise HTTPException(status_code=400, detail='start must be YYYY-MM-DD')
     else:
-        start_date = datetime.now(ZoneInfo('America/New_York')).date()
+        start_date = _campus_today()
     try:
         # Blocking fetch on a cache miss (at most hourly) — keep it off the event loop
         schedule, fetched_at = await asyncio.to_thread(hours.cache.get)

@@ -1,5 +1,6 @@
 """Hall hours: gviz parsing, the hourly cache, and /api/hours."""
 import json
+import threading
 
 import pytest
 from fastapi import HTTPException
@@ -59,6 +60,17 @@ def test_parse_sheet_closed_dinner_only_and_unknown_days():
     assert s["51"]["2026-10-13"][-1] == {"meal": "Dinner", "open": "16:00", "close": "22:00"}
 
 
+def test_one_unknown_meal_makes_the_whole_day_unknown():
+    sheet = gviz([
+        ["venue", "10/10/2026", "10/11/2026", "10/12/2026", "10/13/2026"],
+        ["Yahentamitsi | Breakfast", "Closed", "Closed", "Closed", "Closed"],
+        ["Yahentamitsi | Lunch", "TBD", "Closed", "", "Closed"],
+        ["Yahentamitsi | Dinner", "4pm-9pm", "Closed", "Closed"],    # short row: 10/13 has no cell
+    ])
+    s = hours.parse_sheet(sheet)
+    assert s["19"] == {"2026-10-11": []}   # only the day every meal cell speaks for
+
+
 def test_parse_sheet_handles_typed_date_headers():
     sheet = gviz([["venue", "Date(2026,9,10)"], ["Yahentamitsi | Dinner", "4pm-9pm"]])
     assert hours.parse_sheet(sheet) == {"19": {"2026-10-10": [{"meal": "Dinner", "open": "16:00", "close": "21:00"}]}}
@@ -113,6 +125,49 @@ def test_cache_without_a_good_copy_raises():
     cache = hours.HoursCache(fetcher=lambda: "not gviz", clock=Clock())
     with pytest.raises(hours.HoursUnavailable):
         cache.get()
+
+
+def test_cache_backs_off_after_a_failed_first_fetch():
+    clock, calls = Clock(), []
+
+    def fetcher():
+        calls.append(clock.now)
+        if len(calls) == 1:
+            raise ConnectionError("sheet down")
+        return SHEET
+
+    cache = hours.HoursCache(fetcher=fetcher, clock=clock)
+    with pytest.raises(hours.HoursUnavailable):
+        cache.get()
+    clock.now += 60
+    with pytest.raises(hours.HoursUnavailable):
+        cache.get()
+    assert len(calls) == 1                                           # no fetch during the backoff
+    clock.now += hours.RETRY_SECONDS
+    assert cache.get()[0] == hours.parse_sheet(SHEET) and len(calls) == 2
+
+
+def test_stale_copy_is_served_while_another_request_refreshes():
+    clock, refreshing, release = Clock(), threading.Event(), threading.Event()
+    calls = []
+
+    def fetcher():
+        calls.append(clock.now)
+        if len(calls) == 2:          # the refresh hangs until the test lets it finish
+            refreshing.set()
+            release.wait(5)
+        return SHEET
+
+    cache = hours.HoursCache(fetcher=fetcher, clock=clock)
+    stale = cache.get()
+    clock.now += hours.REFRESH_SECONDS
+    t = threading.Thread(target=cache.get)
+    t.start()
+    assert refreshing.wait(5)
+    assert cache.get() == stale and len(calls) == 2                  # didn't block or fetch again
+    release.set()
+    t.join(5)
+    assert not t.is_alive()
 
 
 @pytest.fixture

@@ -114,6 +114,45 @@ struct HallHoursStatusTests {
     @Test func dayMissingFromTheDataReturnsNil() throws {
         #expect(try status("19", at(10, 20, 12)) == nil)
     }
+
+    @Test func aNestedWindowDoesNotShortenTheDay() {
+        let day = [
+            MealWindow(name: "Brunch", openMinute: 10 * 60, closeMinute: 21 * 60),
+            MealWindow(name: "Lunch", openMinute: 11 * 60, closeMinute: 14 * 60),
+            MealWindow(name: "Dinner", openMinute: 16 * 60, closeMinute: 20 * 60)
+        ]
+        let s = DiningHallSchedule.status(days: ["2026-10-14": day], at: at(10, 14, 12), calendar: campus)
+        #expect(s?.isOpen == true && s?.dayCloseTime == "9 PM" && s?.isClosingSoon == false)
+    }
+}
+
+struct CampusCalendarTests {
+
+    /// Late evening on campus is already tomorrow in UTC; keys and hours follow campus time
+    @Test func defaultsUseCampusTimeNotTheDeviceZone() throws {
+        let night = at(10, 13, 20, 45)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        #expect(DiningHallSchedule.dateKey(night, calendar: utc) == "2026-10-14")
+        #expect(DiningHallSchedule.dateKey(night) == "2026-10-13")
+        #expect(DiningHallSchedule.status(days: try liveDays()["19"]!, at: night)?.isClosingSoon == true)
+
+        let fallback = DiningHallSchedule.all["19"]!
+        #expect(fallback.currentStatus(at: night).currentMeal == "Dinner")
+        #expect(!fallback.currentStatus(at: night, calendar: utc).isOpen)
+    }
+
+    @Test(arguments: [Calendar.Identifier.buddhist, .japanese])
+    func nonGregorianDeviceCalendarStillMatchesKeys(_ identifier: Calendar.Identifier) throws {
+        let date = at(10, 13, 18)
+        var device = Calendar(identifier: identifier)
+        device.timeZone = campus.timeZone
+        // What Calendar.current would give on such a device: an era year, so no key would match
+        #expect(DiningHallSchedule.dateKey(date, calendar: device) != "2026-10-13")
+        #expect(Calendar.campus.identifier == .gregorian)
+        #expect(DiningHallSchedule.dateKey(date) == "2026-10-13")
+        #expect(DiningHallSchedule.status(days: try liveDays()["19"]!, at: date)?.isOpen == true)
+    }
 }
 
 @MainActor
@@ -144,5 +183,47 @@ struct HallHoursServiceTests {
         // 16 isn't in the live data at all -> hardcoded
         let date = at(10, 11, 12)
         #expect(relaunched.status(for: "16", at: date).isOpen == DiningHallSchedule.all["16"]!.currentStatus(at: date).isOpen)
+    }
+
+    @Test func refreshRetriesFiveMinutesAfterAFailureThenHourly() async throws {
+        let response = try JSONDecoder().decode(HallHoursResponse.self, from: Data(json.utf8))
+        var clock = at(10, 11, 12)
+        var calls = 0
+        var failing = true
+        let service = HallHoursService(defaults: freshDefaults(), fetch: {
+            calls += 1
+            if failing { throw URLError(.notConnectedToInternet) }
+            return response
+        }, now: { clock })
+
+        await service.refreshIfNeeded()
+        await service.refreshIfNeeded()
+        #expect(calls == 1)                       // a failure throttles too
+        clock += 301
+        failing = false
+        await service.refreshIfNeeded()
+        #expect(calls == 2 && service.days["19"] != nil)
+        clock += 301
+        await service.refreshIfNeeded()
+        #expect(calls == 2)                       // hourly once it has data
+        clock += 3600
+        await service.refreshIfNeeded()
+        #expect(calls == 3)
+    }
+
+    @Test func overlappingRefreshesDoNotFetchTwice() async {
+        var clock = at(10, 11, 12)
+        var calls = 0
+        var service: HallHoursService!
+        service = HallHoursService(defaults: freshDefaults(), fetch: {
+            calls += 1
+            if calls == 1 {
+                clock += 3600                     // even past the throttle, a refresh is already in flight
+                await service.refreshIfNeeded()
+            }
+            throw URLError(.timedOut)
+        }, now: { clock })
+        await service.refreshIfNeeded()
+        #expect(calls == 1)
     }
 }

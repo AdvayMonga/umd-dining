@@ -48,15 +48,24 @@ class HallHoursService {
     static let shared = HallHoursService()
 
     private(set) var days: [String: [String: [MealWindow]]] = [:]
-    private var lastFetch: Date?
+    private var lastAttempt: Date?
+    private var lastAttemptSucceeded = false
+    private var isRefreshing = false
 
     private static let cacheKey = "hallHoursCache"
     private static let refreshInterval: TimeInterval = 3600
+    private static let retryInterval: TimeInterval = 300
 
     private let defaults: UserDefaults
+    private let fetch: () async throws -> HallHoursResponse
+    private let now: () -> Date
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         fetch: @escaping () async throws -> HallHoursResponse = { try await DiningAPIService.shared.fetchHallHours() },
+         now: @escaping () -> Date = { .now }) {
         self.defaults = defaults
+        self.fetch = fetch
+        self.now = now
         if let data = defaults.data(forKey: Self.cacheKey),
            let cached = try? JSONDecoder().decode(HallHoursResponse.self, from: data) {
             days = cached.mealWindows
@@ -71,15 +80,25 @@ class HallHoursService {
         return DiningHallSchedule.all[hallId]?.currentStatus(at: date) ?? .closed
     }
 
-    /// At most hourly; failures keep whatever is cached
+    /// Hourly after a success, every 5 min after a failure; failures keep whatever is cached
     func refreshIfNeeded() async {
-        if let lastFetch, Date.now.timeIntervalSince(lastFetch) < Self.refreshInterval { return }
-        guard let response = try? await DiningAPIService.shared.fetchHallHours() else { return }
+        guard !isRefreshing else { return }
+        if let lastAttempt,
+           now().timeIntervalSince(lastAttempt) < (lastAttemptSucceeded ? Self.refreshInterval : Self.retryInterval) {
+            return
+        }
+        // Recorded before awaiting, so overlapping calls and failures are throttled too
+        isRefreshing = true
+        lastAttempt = now()
+        lastAttemptSucceeded = false
+        defer { isRefreshing = false }
+        guard let response = try? await fetch() else { return }
         apply(response)
     }
 
     func apply(_ response: HallHoursResponse) {
-        lastFetch = .now
+        lastAttempt = now()
+        lastAttemptSucceeded = true
         days = response.mealWindows
         if let data = try? JSONEncoder().encode(response) {
             defaults.set(data, forKey: Self.cacheKey)

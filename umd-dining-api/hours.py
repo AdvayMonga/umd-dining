@@ -138,7 +138,7 @@ def parse_sheet(text: str) -> dict:
         raise ValueError('sheet has no rows')
     header = [_parse_header_date(_cell_value(c)) for c in rows[0].get('c') or []]
 
-    # {hall_id: {date: {"windows": [...], "known": bool}}}
+    # {hall_id: {date: [(open, close, meal)], or None once any meal cell that day is unknown}}
     days: dict = {}
     for row in rows[1:]:
         cells = row.get('c') or []
@@ -149,15 +149,18 @@ def parse_sheet(text: str) -> dict:
         hall_id = HALL_IDS.get(venue.lower())
         if not hall_id or not meal:
             continue
-        for i, cell in enumerate(cells[1:], start=1):
-            d = header[i] if i < len(header) else None
+        by_date = days.setdefault(hall_id, {})
+        for i, d in enumerate(header):
             if d is None:
                 continue
-            window = parse_window(_cell_value(cell))
+            key = d.isoformat()
+            window = parse_window(_cell_value(cells[i]) if i < len(cells) else None)
             if window is None:
+                # A day is only known when every meal is: "Closed" breakfast + TBD dinner isn't closed
+                by_date[key] = None
                 continue
-            day = days.setdefault(hall_id, {}).setdefault(d.isoformat(), [])
-            if window != CLOSED:
+            day = by_date.setdefault(key, [])
+            if day is not None and window != CLOSED:
                 day.append((window[0], window[1], meal))
 
     if not days:
@@ -165,7 +168,7 @@ def parse_sheet(text: str) -> dict:
     return {
         hall_id: {
             d: [{'meal': meal, 'open': _fmt(o), 'close': _fmt(c)} for o, c, meal in sorted(windows)]
-            for d, windows in by_date.items()
+            for d, windows in by_date.items() if windows is not None
         }
         for hall_id, by_date in days.items()
     }
@@ -188,27 +191,40 @@ class HoursCache:
         self._fetcher = fetcher
         self._clock = clock
         self._lock = threading.Lock()
-        self.schedule = None
-        self.fetched_at = None
+        self._copy = None  # (schedule, fetched_at), swapped as a unit so readers never see a mix
         self._expires = 0.0
 
     def get(self):
         """Returns (schedule, fetched_at). Blocking — call off the event loop."""
-        with self._lock:
-            if self.schedule is not None and self._clock() < self._expires:
-                return self.schedule, self.fetched_at
+        if self._clock() < self._expires:
+            return self._serve()
+        # Stale-while-revalidate: if another request is already refreshing, don't queue behind it
+        if not self._lock.acquire(blocking=self._copy is None):
+            return self._copy
+        try:
+            if self._clock() < self._expires:  # another request refreshed (or failed) while we waited
+                return self._serve()
             try:
                 schedule = parse_sheet(self._fetcher())
             except Exception as e:
-                if self.schedule is None:
-                    raise HoursUnavailable(str(e))
-                print(f"Hours refresh failed, serving copy from {self.fetched_at}: {e}")
+                # Back off either way, so a dead sheet doesn't cost every request a 10s timeout
                 self._expires = self._clock() + RETRY_SECONDS
-                return self.schedule, self.fetched_at
-            self.schedule = schedule
-            self.fetched_at = datetime.fromtimestamp(self._clock(), timezone.utc).isoformat(timespec='seconds')
+                if self._copy is None:
+                    raise HoursUnavailable(str(e))
+                print(f"Hours refresh failed, serving copy from {self._copy[1]}: {e}")
+                return self._copy
+            fetched_at = datetime.fromtimestamp(self._clock(), timezone.utc).isoformat(timespec='seconds')
+            self._copy = (schedule, fetched_at)
             self._expires = self._clock() + REFRESH_SECONDS
-            return self.schedule, self.fetched_at
+            return self._copy
+        finally:
+            self._lock.release()
+
+    def _serve(self):
+        # Within the expiry window: the good copy, or nothing during a failure backoff
+        if self._copy is None:
+            raise HoursUnavailable('hours fetch failed recently; retrying soon')
+        return self._copy
 
 
 cache = HoursCache()
