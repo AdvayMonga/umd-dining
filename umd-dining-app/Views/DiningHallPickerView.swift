@@ -81,12 +81,14 @@ struct DiningHallCard: View {
     let onTap: () -> Void
 
     private var status: DiningHallSchedule.Status {
-        DiningHallSchedule.all[hallId]?.currentStatus() ?? .closed
+        HallHoursService.shared.status(for: hallId)
     }
 
     private var statusText: String {
         if status.isOpen, let close = status.dayCloseTime, let meal = status.currentMeal {
             return "Open until \(close) · \(meal)"
+        } else if let nextTime = status.nextOpenTime, let day = status.nextOpenDay {
+            return "Opens \(day) at \(nextTime)"
         } else if let nextTime = status.nextOpenTime {
             return "Opens at \(nextTime)"
         } else {

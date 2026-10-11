@@ -23,6 +23,7 @@ from scraper import scrape_all_dining_halls, scrape_dining_hall, scrape_full_wee
 from ranker import rank_items
 from search_ranker import rank_search_results
 from embeddings import generate_embedding_async
+import hours
 
 router = APIRouter()
 
@@ -61,9 +62,13 @@ def _ensure_string(value, field_name='field'):
     return value
 
 
-def _today_str() -> str:
+def _campus_today():
     # Campus time, not server time: the server runs on UTC, which is already "tomorrow" during dinner
-    return datetime.now(ZoneInfo('America/New_York')).strftime('%-m/%-d/%Y')
+    return datetime.now(ZoneInfo('America/New_York')).date()
+
+
+def _today_str() -> str:
+    return _campus_today().strftime('%-m/%-d/%Y')
 
 
 async def _resolve_availability(rec_nums: list, today: Optional[str] = None) -> dict:
@@ -1542,6 +1547,45 @@ async def remove_intake(request: Request, body: RemoveIntakeBody = Body(...), us
 
     await db.intake.delete_one(query)
     return {'success': True}
+
+
+# ---------------------------------------------------------------------------
+# Hall hours (UMD Dining's published schedule)
+# ---------------------------------------------------------------------------
+
+@router.get('/api/hours')
+# Anonymous, so keyed by IP: a whole dorm can share one NAT address. Served from memory, so cheap
+@limiter.limit("300/minute")
+async def get_hours(
+    request: Request,
+    start: Optional[str] = Query(default=None, description='YYYY-MM-DD; defaults to today on campus'),
+    days: int = Query(default=14, ge=1, le=60),
+):
+    if start:
+        try:
+            start_date = datetime.strptime(start, '%Y-%m-%d').date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail='start must be YYYY-MM-DD')
+        # The sheet only covers about a year; this also keeps start + days from overflowing
+        if abs((start_date - _campus_today()).days) > 730:
+            raise HTTPException(status_code=400, detail='start must be within two years of today')
+    else:
+        start_date = _campus_today()
+    try:
+        # Blocking fetch on a cache miss (at most hourly) — keep it off the event loop
+        schedule, fetched_at = await asyncio.to_thread(hours.cache.get)
+    except hours.HoursUnavailable:
+        raise HTTPException(status_code=503, detail='hours unavailable')
+    dates = [(start_date + timedelta(days=i)).isoformat() for i in range(days)]
+    # Per hall: date -> meal windows; [] = closed all day, missing date = unknown
+    return {
+        'success': True,
+        'start': dates[0],
+        'days': days,
+        'halls': hours.window_range(schedule, dates),
+        'source': hours.SOURCE_PAGE,
+        'fetched_at': fetched_at,
+    }
 
 
 # ---------------------------------------------------------------------------

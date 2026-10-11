@@ -69,5 +69,12 @@ struct UMD_DiningApp: App {
             }
         }
         .modelContainer(for: [DailyLog.self, TrackedEntry.self])
+        .onChange(of: scenePhase, initial: true) {
+            // Launch and every return to the foreground (throttled inside). Unstructured so no
+            // view disappearing can cancel it
+            if scenePhase == .active {
+                Task { await HallHoursService.shared.refreshIfNeeded() }
+            }
+        }
     }
 }

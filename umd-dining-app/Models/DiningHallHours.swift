@@ -1,5 +1,15 @@
 import Foundation
 
+extension Calendar {
+    /// Hall hours are campus hours: Gregorian in America/New_York, whatever the device's zone or calendar.
+    nonisolated static let campus: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        cal.locale = .autoupdatingCurrent
+        return cal
+    }()
+}
+
 struct MealWindow {
     let name: String
     let openMinute: Int   // minutes from midnight
@@ -15,8 +25,8 @@ struct MealWindow {
     private func minuteToString(_ m: Int) -> String {
         let hour = m / 60
         let min = m % 60
-        let period = hour < 12 ? "AM" : "PM"
-        let displayHour = hour == 0 ? 12 : hour > 12 ? hour - 12 : hour
+        let period = hour < 12 || hour == 24 ? "AM" : "PM"   // 24:00 is midnight at the end of the day
+        let displayHour = hour % 12 == 0 ? 12 : hour % 12
         return min == 0 ? "\(displayHour) \(period)" : "\(displayHour):\(String(format: "%02d", min)) \(period)"
     }
 }
@@ -42,12 +52,12 @@ struct DiningHallSchedule {
         let dayCloseTime: String? // last meal's close = when the hall closes for the day
         let nextMeal: String?
         let nextOpenTime: String?
+        var nextOpenDay: String? = nil  // "tomorrow" / "Tue" when the next opening isn't today
 
         static let closed = Status(isOpen: false, isClosingSoon: false, currentMeal: nil, closeTime: nil, dayCloseTime: nil, nextMeal: nil, nextOpenTime: nil)
     }
 
-    func currentStatus(at date: Date = .now) -> Status {
-        let cal = Calendar.current
+    func currentStatus(at date: Date = .now, calendar cal: Calendar = .campus) -> Status {
         let weekday = cal.component(.weekday, from: date)  // 1=Sun, 6=Fri, 7=Sat
         let isWeekend = weekday == 1 || weekday == 7
         let isFriday = weekday == 6
@@ -79,7 +89,61 @@ struct DiningHallSchedule {
         return .closed
     }
 
-    // Hardcoded hours — week of 4/27–5/3 (verify each semester against UMD Dining schedule)
+    /// Status from live hours (hall's "yyyy-MM-dd" -> windows; [] = closed all day).
+    /// nil when today isn't in the data, so the caller falls back to the hardcoded week.
+    static func status(days: [String: [MealWindow]], at date: Date, calendar: Calendar = .campus) -> Status? {
+        guard let windows = days[dateKey(date, calendar: calendar)] else { return nil }
+        let minute = calendar.component(.hour, from: date) * 60 + calendar.component(.minute, from: date)
+
+        if let i = windows.firstIndex(where: { $0.contains(minute: minute) }) {
+            // Back-to-back meals (Lunch 10:30–4, Dinner 4–9) are one open stretch;
+            // a gap between meals (summer hours) closes the hall until the next one
+            // Running max, so a window nested inside an earlier one can't cut the stretch short
+            var end = i
+            var last = windows[i]
+            while end + 1 < windows.count && windows[end + 1].openMinute <= last.closeMinute {
+                end += 1
+                if windows[end].closeMinute > last.closeMinute { last = windows[end] }
+            }
+            return Status(
+                isOpen: true,
+                isClosingSoon: last.closeMinute - minute <= 30,
+                currentMeal: windows[i].name,
+                closeTime: windows[i].closeTimeString,
+                dayCloseTime: last.closeTimeString,
+                nextMeal: nil,
+                nextOpenTime: nil
+            )
+        }
+        if let next = windows.first(where: { $0.openMinute > minute }) {
+            return Status(isOpen: false, isClosingSoon: false, currentMeal: nil, closeTime: nil,
+                          dayCloseTime: windows.last?.closeTimeString, nextMeal: next.name, nextOpenTime: next.openTimeString)
+        }
+        // Done for today: look ahead to the next open day, stopping where the data runs out
+        for offset in 1...7 {
+            guard let day = calendar.date(byAdding: .day, value: offset, to: date),
+                  let later = days[dateKey(day, calendar: calendar)] else { break }
+            if let first = later.first {
+                return Status(isOpen: false, isClosingSoon: false, currentMeal: nil, closeTime: nil,
+                              dayCloseTime: nil, nextMeal: first.name, nextOpenTime: first.openTimeString,
+                              nextOpenDay: offset == 1 ? "tomorrow" : weekdayName(day, calendar: calendar))
+            }
+        }
+        return .closed
+    }
+
+    static func dateKey(_ date: Date, calendar: Calendar = .campus) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    private static func weekdayName(_ date: Date, calendar: Calendar) -> String {
+        let weekday = calendar.component(.weekday, from: date)  // 1 = Sun
+        return calendar.shortWeekdaySymbols[weekday - 1]
+    }
+
+    // Hardcoded hours — week of 4/27–5/3. Fallback only: HallHoursService serves UMD's live
+    // schedule when it has data for the day (verify each semester against UMD Dining schedule)
     static let all: [String: DiningHallSchedule] = [
         "19": DiningHallSchedule(
             hallId: "19",
