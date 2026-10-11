@@ -289,7 +289,7 @@ struct HomeView: View {
     ]
 
     private func hallCardPage(for hallId: String) -> some View {
-        let status = DiningHallSchedule.all[hallId]?.currentStatus()
+        let status: DiningHallSchedule.Status? = HallHoursService.shared.status(for: hallId)
         let imageAlignment = Self.hallImageAlignments[hallId] ?? .center
         return GeometryReader { geo in
             ZStack {
@@ -343,7 +343,7 @@ struct HomeView: View {
                                     .font(.inter(size: 13, weight: .medium))
                                     .foregroundStyle(.white.opacity(0.85))
                             } else if let status, !status.isOpen, let next = status.nextOpenTime {
-                                Text("Opens at \(next)")
+                                Text(status.nextOpenDay.map { "Opens \($0) at \(next)" } ?? "Opens at \(next)")
                                     .font(.inter(size: 13, weight: .medium))
                                     .foregroundStyle(.white.opacity(0.85))
                             }

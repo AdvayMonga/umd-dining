@@ -499,6 +499,14 @@ actor DiningAPIService {
         }
     }
 
+    // MARK: - Hall hours
+
+    func fetchHallHours(days: Int = 21) async throws -> HallHoursResponse {
+        // No start date: the server defaults to today on campus
+        let data = try await fetch("\(baseURL)/hours?days=\(days)")
+        return try JSONDecoder().decode(HallHoursResponse.self, from: data)
+    }
+
     // MARK: - Announcements
 
     func fetchAnnouncement() async -> AnnouncementData? {
